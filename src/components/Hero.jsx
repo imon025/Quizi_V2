@@ -10,6 +10,8 @@ import analyticsIllustration from "../assets/analytics.png";
 import collaborationIllustration from "../assets/collaboration.png";
 import mobileIllustration from "../assets/mobile_learning.png";
 
+import graduateCap from "../assets/graduate-cap.png";
+
 const Hero = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [userType, setUserType] = useState("student");
@@ -185,13 +187,11 @@ const Hero = () => {
       <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 sm:p-16">
         <div className="w-full max-w-md">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-2 mb-8 sm:mb-12">
-            <div className="text-[#1d2733] flex items-center gap-2">
-              <GraduationCap size={32} className="text-[#1d2733] sm:w-[40px] sm:h-[40px]" />
-              <span className="text-xl sm:text-2xl font-bold tracking-tight uppercase">
-                Quizi <span className="text-[#5cb85c]">Hub</span>
-              </span>
-            </div>
+          <div className="flex flex-col items-center justify-center mb-8 sm:mb-12">
+            <img src={graduateCap} alt="Quizi Hub" className="w-16 h-16 sm:w-20 sm:h-20 object-contain -mb-2" />
+            <span className="text-2xl sm:text-3xl font-bold tracking-tight uppercase text-[#1d2733]">
+              Quizi <span className="text-[#5cb85c]">Hub</span>
+            </span>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>

@@ -42,6 +42,7 @@ import "./dashboard.css";
 import { useTheme } from "../context/ThemeContext";
 import toast from "react-hot-toast";
 import { supabase } from "../supabaseClient";
+import graduateCap from "../assets/graduate-cap.png";
 
 // Helper Component for Bar Chart
 // Helper Component for Bar Chart
@@ -1143,7 +1144,10 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
       {/* Sidebar */}
       <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="flex justify-between items-center mb-10">
-          <h2 className="sidebar-title mb-0">Quizi Pro</h2>
+          <div className="flex items-center gap-2">
+            <img src={graduateCap} alt="Quizi" className="w-8 h-8 object-contain" />
+            <h2 className="sidebar-title mb-0">Quizi Pro</h2>
+          </div>
           <button className="md:hidden text-gray-400" onClick={toggleSidebar}>
             <X size={24} />
           </button>
@@ -1151,19 +1155,19 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
         <nav className="sidebar-nav">
           <SidebarItem
-            icon={<Home size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="Overview"
             active={activeTab === "overview"}
             onClick={() => { setActiveTab("overview"); setIsSidebarOpen(false); }}
           />
           <SidebarItem
-            icon={<Layers size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="My Courses"
             active={activeTab === "courses"}
             onClick={() => { setActiveTab("courses"); setIsSidebarOpen(false); }}
           />
           <SidebarItem
-            icon={<Users size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="Students"
             active={activeTab === "students"}
             onClick={() => { setActiveTab("students"); setIsSidebarOpen(false); }}
@@ -1175,7 +1179,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
             onClick={() => { setActiveTab("leave-requests"); setIsSidebarOpen(false); }}
           />
           <SidebarItem
-            icon={<FileText size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="Quizzes"
             active={activeTab === "all-quizzes"}
             onClick={() => { setActiveTab("all-quizzes"); setIsSidebarOpen(false); }}
@@ -1193,7 +1197,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
             }}
           />
           <SidebarItem
-            icon={<BarChart3 size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="Reports"
             active={activeTab === "reports"}
             onClick={() => { setActiveTab("reports"); setIsSidebarOpen(false); }}
@@ -1209,7 +1213,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
             onClick={toggleTheme}
           />
           <SidebarItem
-            icon={<User size={18} />}
+            icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />}
             label="Profile"
             active={activeTab === "profile"}
             onClick={() => {
@@ -1218,7 +1222,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
               setIsSidebarOpen(false);
             }}
           />
-          <SidebarItem icon={<LogOut size={18} />} label="Logout" onClick={handleLogout} />
+          <SidebarItem icon={<img src={graduateCap} alt="icon" className="w-5 h-5 object-contain" />} label="Logout" onClick={handleLogout} />
         </div>
       </aside>
 
@@ -1362,21 +1366,21 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                     title="Total Students"
                     value={new Set(allResults.map(r => r.student_id)).size}
                     trend="Unique enrolled"
-                    icon={<Users size={24} />}
+                    icon={<img src={graduateCap} alt="icon" className="w-6 h-6 object-contain" />}
                     onClick={() => setActiveTab("students")}
                   />
                   <StatCard
                     title="Live Courses"
                     value={myCourses.length}
                     trend="Active"
-                    icon={<Layers size={24} />}
+                    icon={<img src={graduateCap} alt="icon" className="w-6 h-6 object-contain" />}
                     onClick={() => setActiveTab("courses")}
                   />
                   <StatCard
                     title="Quizzes Held"
                     value={allResults.length}
                     trend="Total attempts"
-                    icon={<FileText size={24} />}
+                    icon={<img src={graduateCap} alt="icon" className="w-6 h-6 object-contain" />}
                     onClick={() => setActiveTab("all-quizzes")}
                   />
                   <StatCard
@@ -1386,7 +1390,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       : "0%"
                     }
                     trend="Class performance"
-                    icon={<UserCheck size={24} />}
+                    icon={<img src={graduateCap} alt="icon" className="w-6 h-6 object-contain" />}
                     onClick={() => setActiveTab("quiz-results")}
                   />
                 </div>
