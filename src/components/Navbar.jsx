@@ -4,7 +4,6 @@ import { Sun, Moon } from "lucide-react";
 import { navLinks } from "../utils/index";
 import { useState } from "react";
 import { useTheme } from "../context/ThemeContext";
-import graduateCap from "../assets/graduate-cap.png";
 
 const Navbar = ({ onLoginClick }) => {
   const [menu, setMenu] = useState(false);
@@ -14,8 +13,7 @@ const Navbar = ({ onLoginClick }) => {
     <div className="mb-5 md:mb-10 bg-white dark:bg-primary border-b border-slate-200 dark:border-transparent">
       <div className="container px-5 md:px-10 mx-auto relative font-poppins flex items-center justify-between py-6 md:py-8">
         {/* Logo */}
-        <div className="flex items-center gap-2">
-          <img src={graduateCap} alt="Quizi" className="w-8 h-8 object-contain" />
+        <div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Quizi</h2>
         </div>
 
