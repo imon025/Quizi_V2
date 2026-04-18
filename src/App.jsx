@@ -1,23 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Toaster } from "react-hot-toast";
-import AccountForm from "./components/AccountForm";
-import Navbar from "./components/Navbar";
-import ScrollTop from "./components/ScrollTop";
 import Hero from "./components/Hero";
-import Stats from "./components/Stats";
-import Features from "./components/Features";
-import About from "./components/About";
-import Steps from "./components/Steps";
-import Testimonials from "./components/Testimonials";
-import CTA from "./components/CTA";
-import Footer from "./components/Footer";
 
 import StudentDashboard from "./components/StudentDashboard";
 import TeacherDashboard from "./components/TeacherDashboard";
 import { supabase } from "./supabaseClient";
 
 const App = () => {
-  const [showAccount, setShowAccount] = useState(false);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
   
   // Modern Auth State
@@ -105,7 +94,6 @@ const App = () => {
   // LOGOUT
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setShowAccount(true); // Show login modal after logout
   };
 
   if (isInitializing && !loggedInUser) {
@@ -127,26 +115,7 @@ const App = () => {
       ) : userType === "teacher" ? (
         <TeacherDashboard teacherData={loggedInUser} onLogout={handleLogout} isFirstLogin={isFirstLogin} />
       ) : (
-        <div className="bg-primary text-textPrimary w-full h-full">
-          <Navbar onLoginClick={() => setShowAccount(true)} />
-          <ScrollTop />
-          <div className="container px-5 md:px-10 mx-auto">
-            <Hero onLoginClick={() => setShowAccount(true)} />
-            <div className="flex flex-col xs:flex-row flex-wrap items-center justify-between gap-10 py-20 w-full">
-              <Stats end={3800} title="ACTIVE STUDENT & TEACHER" suffix="+" />
-              <Stats end={230} title="Total Courses" suffix="+" />
-              <Stats end={230} title="Total Users" prefix="$" suffix="M+" />
-            </div>
-            <Features onLoginClick={() => setShowAccount(true)} />
-            <About />
-            <Steps onLoginClick={() => setShowAccount(true)} />
-            <Testimonials />
-            <CTA onLoginClick={() => setShowAccount(true)} />
-            <Footer />
-          </div>
-
-          {showAccount && <AccountForm setShowAccount={setShowAccount} />}
-        </div>
+        <Hero />
       )}
     </>
   );
