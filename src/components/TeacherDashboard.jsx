@@ -9,6 +9,7 @@ import {
   Plus,
   FileText,
   ArrowRight,
+  ArrowLeft,
   UserCheck,
   User,
   Menu,
@@ -1225,12 +1226,12 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
       <main className="main">
         {/* Header */}
         <div className="header">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button className="mobile-toggle" onClick={toggleSidebar}>
               <Menu size={24} />
             </button>
-            <div>
-              <h1 className="text-xl md:text-3xl">Hello, {teacherData.full_name || "Instructor"}</h1>
+            <div className="hidden sm:block">
+              <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Hello, {teacherData.full_name || "Instructor"}</h1>
               <p className="header-subtitle mt-1">Manage your courses and evaluate students</p>
             </div>
           </div>
@@ -1301,8 +1302,16 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           </div>
         </div>
 
-        {/* Content Area - Scrollable */}
         <div className="content-area">
+          {activeTab !== 'overview' && (
+            <button 
+              onClick={() => setActiveTab('overview')} 
+              className="sm:hidden mb-4 p-2 text-indigo-500 hover:bg-indigo-500/10 rounded-xl transition-all w-fit"
+              title="Back to Overview"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
 
           {activeTab === "overview" && (() => {
             // Calculate dynamic data for charts

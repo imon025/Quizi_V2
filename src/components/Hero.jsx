@@ -41,19 +41,19 @@ const Hero = () => {
       title: "Quizi Hub",
       text: "Unleash Your Academic Success with Quizi Hub's Exam Excellence Platform.",
       image: masteryIllustration,
-      bgColor: "#eaf9eb" // Mint Green
+      bgColor: "#91c5e8ff" // Mint Green
     },
     {
       title: "AI Eye-Tracking",
       text: "Our smart proctoring system monitors focus to ensure a fair and honest assessment for everyone.",
       image: aiIllustration,
-      bgColor: "#e6f0f9" // Light Blue
+      bgColor: "#90b7d0ff" // Light Blue
     },
     {
       title: "Anti-Cheat System",
       text: "Stay in the zone. We detect and prevent tab-switching and external distractions automatically.",
       image: antiCheatIllustration,
-      bgColor: "#f0eaf9" // Lavender
+      bgColor: "#c6a8e4ff" // Lavender
     },
     {
       title: "Real-time Analytics",
@@ -138,7 +138,7 @@ const Hero = () => {
     }
   };
 
-  const inputStyle = "w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-[#5cb85c] focus:border-transparent outline-none transition-all placeholder:text-gray-400 text-sm";
+  const inputStyle = "w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-[#5cb85c] focus:border-transparent outline-none transition-all placeholder:text-gray-400 text-sm text-gray-900 bg-white";
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -182,13 +182,13 @@ const Hero = () => {
       </div>
 
       {/* Right Side: Auth Form */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-8 sm:p-16">
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-6 sm:p-16">
         <div className="w-full max-w-md">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-2 mb-12">
+          <div className="flex items-center justify-center gap-2 mb-8 sm:mb-12">
             <div className="text-[#1d2733] flex items-center gap-2">
-              <GraduationCap size={40} className="text-[#1d2733]" />
-              <span className="text-2xl font-bold tracking-tight uppercase">
+              <GraduationCap size={32} className="text-[#1d2733] sm:w-[40px] sm:h-[40px]" />
+              <span className="text-xl sm:text-2xl font-bold tracking-tight uppercase">
                 Quizi <span className="text-[#5cb85c]">Hub</span>
               </span>
             </div>

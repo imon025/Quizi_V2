@@ -538,12 +538,12 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
         {/* Header - Hide when taking quiz */}
         {activeTab !== 'quiz-session' && (
           <div className="header">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <button className="mobile-toggle" onClick={toggleSidebar}>
                 <Menu size={24} />
               </button>
-              <div>
-                <h1 className="text-xl md:text-3xl">Welcome back, {studentData?.full_name || "Student"}</h1>
+              <div className="hidden sm:block">
+                <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Welcome back, {studentData?.full_name || "Student"}</h1>
                 <p className="header-subtitle mt-1">Ready for your next quiz?</p>
               </div>
             </div>
@@ -608,8 +608,16 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
           </div>
         )}
 
-        {/* Content Area - Scrollable */}
         <div className={`content-area ${activeTab === 'quiz-session' ? 'p-8' : ''}`}>
+          {activeTab !== 'dashboard' && activeTab !== 'quiz-session' && (
+            <button 
+              onClick={() => setActiveTab('dashboard')} 
+              className="sm:hidden mb-4 p-2 text-indigo-500 hover:bg-indigo-500/10 rounded-xl transition-all w-fit flex items-center gap-2"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft size={20} />
+            </button>
+          )}
 
 
           {activeTab === "dashboard" && (() => {
