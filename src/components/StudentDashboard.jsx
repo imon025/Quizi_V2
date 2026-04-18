@@ -43,33 +43,39 @@ import { supabase } from "../supabaseClient";
 const BarChart = ({ data, labels, color }) => {
   const max = Math.max(...data, 1);
   return (
-    <div className="flex items-end gap-2 h-40 w-full relative mb-6 text-slate-500">
-      {/* Grid Lines */}
-      <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="border-t border-current w-full"></div>
+    <div className="flex flex-col gap-8 w-full text-slate-500">
+      <div className="flex items-end gap-2 h-40 w-full relative mb-2">
+        {/* Grid Lines */}
+        <div className="absolute inset-x-0 top-0 h-full flex flex-col justify-between pointer-events-none opacity-[0.03] dark:opacity-[0.05]">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="border-t border-current w-full"></div>
+          ))}
+        </div>
+
+        {data.map((val, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-2 group z-10 h-full justify-end">
+            <div
+              className={`w-full rounded-t-lg transition-all duration-700 hover:opacity-80 relative shadow-sm`}
+              style={{
+                height: `${(val / max) * 100}%`,
+                backgroundColor: val >= 0 ? color : 'transparent',
+                minHeight: val > 0 ? '4px' : '0'
+              }}
+            >
+              {val > 0 && (
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity font-bold shadow-xl border border-slate-700 whitespace-nowrap z-50">
+                  {val} Attempts
+                </div>
+              )}
+            </div>
+          </div>
         ))}
       </div>
-
-      {data.map((val, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-2 group z-10 h-full justify-end">
-          <div
-            className={`w-full rounded-t-lg transition-all duration-700 hover:opacity-80 relative shadow-sm`}
-            style={{
-              height: `${(val / max) * 100}%`,
-              backgroundColor: val >= 0 ? color : 'transparent',
-              minHeight: val > 0 ? '4px' : '0'
-            }}
-          >
-            {val > 0 && (
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity font-bold shadow-xl border border-slate-700 whitespace-nowrap z-50">
-                {val} Attempts
-              </div>
-            )}
-          </div>
-          <span className="text-[8px] md:text-[10px] font-bold uppercase truncate w-full text-center absolute -bottom-6">{labels[i]}</span>
-        </div>
-      ))}
+      <div className="grid grid-cols-7 gap-1 px-2">
+        {labels.map((l, i) => (
+          <span key={i} className="text-[8px] md:text-[10px] font-bold uppercase text-center truncate">{l}</span>
+        ))}
+      </div>
     </div>
   );
 };
