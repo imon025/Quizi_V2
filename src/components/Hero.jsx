@@ -40,32 +40,38 @@ const Hero = () => {
     {
       title: "Quizi Hub",
       text: "Unleash Your Academic Success with Quizi Hub's Exam Excellence Platform.",
-      image: masteryIllustration
+      image: masteryIllustration,
+      bgColor: "#eaf9eb" // Mint Green
     },
     {
       title: "AI Eye-Tracking",
       text: "Our smart proctoring system monitors focus to ensure a fair and honest assessment for everyone.",
-      image: aiIllustration
+      image: aiIllustration,
+      bgColor: "#e6f0f9" // Light Blue
     },
     {
       title: "Anti-Cheat System",
       text: "Stay in the zone. We detect and prevent tab-switching and external distractions automatically.",
-      image: antiCheatIllustration
+      image: antiCheatIllustration,
+      bgColor: "#f0eaf9" // Lavender
     },
     {
       title: "Real-time Analytics",
       text: "Get instant feedback and deep insights into your performance right after you finish.",
-      image: analyticsIllustration
+      image: analyticsIllustration,
+      bgColor: "#f9f0ea" // Peach
     },
     {
       title: "Collaborative Learning",
       text: "Connect with teachers and peers in a secure environment designed for modern education.",
-      image: collaborationIllustration
+      image: collaborationIllustration,
+      bgColor: "#f9f9ea" // Soft Yellow
     },
     {
       title: "Learn Anywhere",
       text: "A seamless experience across all devices, making assessments flexible and accessible.",
-      image: mobileIllustration
+      image: mobileIllustration,
+      bgColor: "#eaf9f9" // Soft Teal
     }
   ];
 
@@ -137,33 +143,41 @@ const Hero = () => {
   return (
     <div className="flex min-h-screen bg-white">
       {/* Left Side: Illustration & Swiper */}
-      <div className="hidden lg:flex lg:w-1/2 bg-[#eaf9eb] flex-col items-center justify-center p-12 relative overflow-hidden">
-        <div className="w-full max-w-lg text-center relative z-10">
-          <div className="mb-12 transition-all duration-700 ease-in-out transform scale-100">
-            <img
-              src={slides[activeSlide].image}
-              alt="Illustration"
-              className="w-full h-auto object-contain max-h-[400px] mb-8 animate-in fade-in zoom-in duration-700"
-            />
-            <h2 className="text-3xl font-bold text-[#1d2733] mb-4">
-              {slides[activeSlide].title}
-            </h2>
-            <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
-              {slides[activeSlide].text}
-            </p>
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        {slides.map((slide, index) => (
+          <div
+            key={index}
+            className={`absolute inset-0 flex flex-col items-center justify-center p-12 transition-opacity duration-1000 ease-in-out ${index === activeSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}
+            style={{ backgroundColor: slide.bgColor }}
+          >
+            <div className="w-full max-w-lg text-center relative z-10">
+              <div className={`transition-all duration-700 ease-in-out transform ${index === activeSlide ? "scale-100 translate-y-0" : "scale-95 translate-y-4"}`}>
+                <img
+                  src={slide.image}
+                  alt="Illustration"
+                  className="w-full h-auto object-contain max-h-[400px] mb-8"
+                />
+                <h2 className="text-3xl font-bold text-[#1d2733] mb-4">
+                  {slide.title}
+                </h2>
+                <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
+                  {slide.text}
+                </p>
+              </div>
+            </div>
           </div>
+        ))}
 
-          {/* Pagination Indicators */}
-          <div className="flex items-center justify-center gap-2 mt-8">
-            {slides.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setActiveSlide(index)}
-                className={`h-2 rounded-full transition-all duration-300 ${index === activeSlide ? "w-8 bg-[#5cb85c]" : "w-2 bg-gray-300"
-                  }`}
-              />
-            ))}
-          </div>
+        {/* Pagination Indicators */}
+        <div className="absolute bottom-12 left-0 right-0 z-20 flex justify-center gap-2">
+          {slides.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setActiveSlide(index)}
+              className={`h-2 rounded-full transition-all duration-300 ${index === activeSlide ? "w-8 bg-[#5cb85c]" : "w-2 bg-gray-300"
+                }`}
+            />
+          ))}
         </div>
       </div>
 
