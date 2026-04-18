@@ -317,9 +317,15 @@
 
 .chart-card {
   background: var(--card-bg);
-  padding: 28px;
+  padding: 16px;
   border-radius: 24px;
   border: 1px solid var(--border-color);
+}
+
+@media (min-width: 768px) {
+  .chart-card {
+    padding: 28px;
+  }
 }
 
 .chart-title {
@@ -330,13 +336,19 @@
 }
 
 .chart-placeholder {
-  height: 320px;
+  height: 280px;
   border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #64748b;
   font-weight: 500;
+}
+
+@media (min-width: 768px) {
+  .chart-placeholder {
+    height: 320px;
+  }
 }
 
 .chart-placeholder.line {
