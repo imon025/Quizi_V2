@@ -24,7 +24,7 @@ Quizi_v2 is a modern React-based quiz application built with Vite. It provides a
 Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/quizi_v2.git
+git clone https://github.com/imon025/Quizi_V2.git
 cd quizi_v2
 ```
 

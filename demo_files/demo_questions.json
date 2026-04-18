@@ -1,0 +1,25 @@
+{
+  "questions": [
+    {
+      "question_type": "mcq",
+      "text": "What is the capital of France?",
+      "option_a": "London",
+      "option_b": "Berlin",
+      "option_c": "Paris",
+      "option_d": "Madrid",
+      "correct_option": "c",
+      "point_value": 5
+    },
+    {
+      "question_type": "true_false",
+      "text": "The Earth is flat.",
+      "correct_option": "false",
+      "point_value": 2
+    },
+    {
+      "question_type": "description",
+      "text": "Explain the process of photosynthesis in brief.",
+      "point_value": 10
+    }
+  ]
+}

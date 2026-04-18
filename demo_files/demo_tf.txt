@@ -1,0 +1,2 @@
+Water boils at 100 degrees Celsius. | true | 5
+Spiders have six legs. | false | 2
