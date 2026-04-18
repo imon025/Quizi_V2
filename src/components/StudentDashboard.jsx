@@ -132,9 +132,9 @@ const MiniLineChart = ({ data, labels }) => {
           })}
         </svg>
       </div>
-      <div className="flex justify-between px-2">
+      <div className="grid grid-cols-7 gap-1 px-2">
         {labels.map((l, i) => (
-          <span key={i} className="text-[8px] md:text-[10px] font-bold uppercase tracking-tighter">{l}</span>
+          <span key={i} className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-tighter text-center truncate">{l}</span>
         ))}
       </div>
     </div>
