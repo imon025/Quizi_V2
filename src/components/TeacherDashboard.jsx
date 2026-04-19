@@ -5,7 +5,7 @@ import {
   Users,
   Layers,
   LogOut,
-  PlusCircle,
+  CirclePlus,
   Plus,
   FileText,
   ArrowRight,
@@ -47,6 +47,19 @@ import { supabase } from "../supabaseClient";
 // Helper Component for Bar Chart
 const BarChart = ({ data, labels, color }) => {
   const max = Math.max(...data, 1);
+  const isEmpty = data.length === 0 || data.every(val => val === 0);
+
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col gap-8 w-full text-slate-500 h-full items-center justify-center min-h-[160px]">
+        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+          <BarChart3 size={32} className="opacity-20" />
+          <span className="text-sm font-medium">No data available</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8 w-full text-slate-500">
       <div className="flex items-end gap-2 h-40 w-full relative mb-2">
@@ -63,7 +76,7 @@ const BarChart = ({ data, labels, color }) => {
               className={`w-full rounded-t-lg transition-all duration-700 hover:opacity-80 relative shadow-sm`}
               style={{
                 height: `${(val / max) * 100}%`,
-                backgroundColor: val >= 0 ? color : 'transparent',
+                backgroundColor: val > 0 ? color : 'transparent',
                 minHeight: val > 0 ? '4px' : '0'
               }}
             >
@@ -89,15 +102,27 @@ const BarChart = ({ data, labels, color }) => {
 const MiniLineChart = ({ data, labels }) => {
   const max = Math.max(...data, 1);
   const padding = 10; // Padding inside SVG
+  const isEmpty = data.length === 0 || data.every(val => val === 0);
+
+  if (isEmpty) {
+    return (
+      <div className="h-44 w-full flex flex-col relative text-slate-500 items-center justify-center">
+        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+          <TrendingUp size={32} className="opacity-20" />
+          <span className="text-sm font-medium">No data available</span>
+        </div>
+      </div>
+    );
+  }
 
   // Adjusted points to fit within padded viewBox
   const points = data.map((val, i) => {
-    const x = padding + (i / (data.length - 1)) * (100 - 2 * padding);
+    const x = padding + (i / Math.max(data.length - 1, 1)) * (100 - 2 * padding);
     const y = padding + (100 - 2 * padding) - (val / max) * (100 - 2 * padding);
     return `${x},${y}`;
   });
 
-  const pathD = points.length > 0 ? `M ${points[0]} L ${points.slice(1).join(' L ')}` : '';
+  const pathD = points.length > 1 ? `M ${points[0]} L ${points.slice(1).join(' L ')}` : (points.length === 1 ? `M ${points[0]} L ${points[0]}` : '');
   const areaD = points.length > 0 ? `${pathD} V 90 H ${padding} Z` : '';
 
   return (
@@ -235,6 +260,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
   const [refreshKey, setRefreshKey] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef(null);
   const { theme, toggleTheme } = useTheme();
   const [bulkType, setBulkType] = useState(localStorage.getItem("teacher_bulkType") || 'mcq');
   const [showOldPass, setShowOldPass] = useState(false);
@@ -341,25 +367,43 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
         .select('*, profiles(*), courses!inner(*)')
         .eq('courses.teacher_id', user.id);
       if (error) throw error;
-      setLeaveRequests(data || []);
+      
+      // Map the nested data for easier access in the UI
+      const mappedData = (data || []).map(item => ({
+        ...item,
+        student: item.profiles || { full_name: "Unknown Student", student_id: "N/A" },
+        course: item.courses || { title: "Unknown Course" },
+        quiz_attempts_count: item.quiz_attempts_count || 0
+      }));
+      
+      setLeaveRequests(mappedData);
     } catch (err) { console.error(err); }
   };
 
-  const handleProcessLeaveRequest = async (requestId, status) => {
+  const handleProcessLeaveRequest = async (req, status) => {
     try {
       const { error } = await supabase
         .from('leave_requests')
         .update({ status })
-        .eq('id', requestId);
+        .eq('id', req.id);
       
       if (error) throw error;
 
-      if (status === 'approved') {
-        const { data: request } = await supabase.from('leave_requests').select('student_id, course_id').eq('id', requestId).single();
-        await supabase.from('enrollments').delete().eq('student_id', request.student_id).eq('course_id', request.course_id);
+      if (status === 'accepted') {
+        const { error: delErr } = await supabase.from('enrollments').delete().eq('student_id', req.student_id).eq('course_id', req.course_id);
+        if (delErr) console.error("Error deleting enrollment:", delErr);
       }
-
       toast.success(`Request ${status}ed successfully!`);
+      
+      // Notify student
+      await supabase.from('notifications').insert({
+        user_id: req.student_id,
+        title: `Leave Request ${status === 'accepted' ? 'Accepted' : 'Declined'}`,
+        message: `Your leave request for "${req.course?.title}" has been ${status}.`,
+        type: 'leave_request',
+        is_read: false
+      });
+
       fetchLeaveRequests();
       fetchMyStudents();
     } catch (err) {
@@ -490,8 +534,19 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
         .from('enrollments')
         .select('*, profiles(*), courses!inner(*)')
         .eq('courses.teacher_id', user.id);
+      
       if (error) throw error;
-      setMyStudents(data || []);
+      
+      // Map the nested data for easier access in the table
+      const mappedData = (data || []).map(item => ({
+        ...item,
+        full_name: item.profiles?.full_name || "Unknown Student",
+        email: item.profiles?.email || "N/A",
+        course_title: item.courses?.title || "Unknown Course",
+        course_code: item.courses?.course_code || "N/A"
+      }));
+      
+      setMyStudents(mappedData);
     } catch (err) { console.error(err); }
   };
 
@@ -503,7 +558,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
         .select('*, profiles(*), quizzes!inner(title, course_id, courses!inner(teacher_id))')
         .eq('quizzes.courses.teacher_id', user.id);
       if (error) throw error;
-      setAllResults(data || []);
+      
+      // Map the nested data for easier access in the table
+      const mappedData = (data || []).map(item => ({
+        ...item,
+        student: item.profiles || { full_name: "Unknown Student", email: "N/A" },
+        quiz_title: item.quizzes?.title || "N/A"
+      }));
+      
+      setAllResults(mappedData);
     } catch (err) { console.error(err); }
   };
 
@@ -681,6 +744,19 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
       setSelectedQuiz(createdQuiz);
       setActiveTab("question-management");
       setShowAddQuestion(true);
+
+      // Notify enrolled students
+      const { data: enrollees } = await supabase.from('enrollments').select('student_id').eq('course_id', selectedCourse.id);
+      if (enrollees && enrollees.length > 0) {
+        const studentNotifications = enrollees.map(en => ({
+          user_id: en.student_id,
+          title: 'New Quiz Published',
+          message: `A new quiz "${quizData.title}" has been published in "${selectedCourse.title}".`,
+          type: 'quiz',
+          is_read: false
+        }));
+        await supabase.from('notifications').insert(studentNotifications);
+      }
     } catch (err) {
       toast.error(err.message || "Failed to create quiz");
     }
@@ -1140,174 +1216,187 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="dashboard">
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[90] md:hidden" onClick={toggleSidebar} />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
-        <div className="flex justify-between items-center mb-10">
-          <h2 className="sidebar-title mb-0">Quizi Pro</h2>
-          <button className="md:hidden text-gray-400" onClick={toggleSidebar}>
-            <X size={24} />
+    <div className="dashboard dark:bg-slate-950">
+      <header className="header z-50 w-full shrink-0 shadow-sm dark:shadow-slate-900/50">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <button className="header-action-btn p-2.5 rounded-xl sm:hidden transition-all duration-200" onClick={toggleSidebar}>
+            <Menu size={24} />
           </button>
-        </div>
-
-        <nav className="sidebar-nav">
-          <SidebarItem
-            icon={<Home size={18} />}
-            label="Overview"
-            active={activeTab === "overview"}
-            onClick={() => { setActiveTab("overview"); setIsSidebarOpen(false); }}
-          />
-          <SidebarItem
-            icon={<Layers size={18} />}
-            label="My Courses"
-            active={activeTab === "courses"}
-            onClick={() => { setActiveTab("courses"); setIsSidebarOpen(false); }}
-          />
-          <SidebarItem
-            icon={<Users size={18} />}
-            label="Students"
-            active={activeTab === "students"}
-            onClick={() => { setActiveTab("students"); setIsSidebarOpen(false); }}
-          />
-          <SidebarItem
-            icon={<ShieldAlert size={18} />}
-            label="Leave Requests"
-            active={activeTab === "leave-requests"}
-            onClick={() => { setActiveTab("leave-requests"); setIsSidebarOpen(false); }}
-          />
-          <SidebarItem
-            icon={<FileText size={18} />}
-            label="Quizzes"
-            active={activeTab === "all-quizzes"}
-            onClick={() => { setActiveTab("all-quizzes"); setIsSidebarOpen(false); }}
-          />
-          <SidebarItem
-            icon={<CheckCircle size={18} />}
-            label="Check Answer"
-            active={activeTab === "quiz-results"}
-            onClick={() => {
-              setActiveTab("quiz-results");
-              setGradingFlow('COURSES');
-              setGradingCourse(null);
-              setGradingQuiz(null);
-              setIsSidebarOpen(false);
-            }}
-          />
-          <SidebarItem
-            icon={<BarChart3 size={18} />}
-            label="Reports"
-            active={activeTab === "reports"}
-            onClick={() => { setActiveTab("reports"); setIsSidebarOpen(false); }}
-          />
-
-        </nav>
-
-
-        <div className="sidebar-footer">
-          <SidebarItem
-            icon={theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-            label={theme === 'light' ? "Dark Mode" : "Light Mode"}
-            onClick={toggleTheme}
-          />
-          <SidebarItem
-            icon={<User size={18} />}
-            label="Profile"
-            active={activeTab === "profile"}
-            onClick={() => {
-              if (activeTab !== "profile") setPreviousTab(activeTab);
-              setActiveTab("profile");
-              setIsSidebarOpen(false);
-            }}
-          />
-          <SidebarItem icon={<LogOut size={18} />} label="Logout" onClick={handleLogout} />
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="main">
-        {/* Header */}
-        <div className="header">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <button className="mobile-toggle" onClick={toggleSidebar}>
-              <Menu size={24} />
-            </button>
-            <div className="hidden lg:block">
-              <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Hello, {teacherData.full_name || "Instructor"}</h1>
-              <p className="header-subtitle mt-1">Manage your courses and evaluate students</p>
-            </div>
+          <div className="hidden sm:block">
+            <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Welcome, {teacherData?.full_name || "Teacher"}</h1>
+            <p className="header-subtitle mt-1">Management Console</p>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="header-enroll-btn btn-primary px-4 py-2 rounded-lg transition text-sm font-bold shadow-lg shadow-indigo-500/20 whitespace-nowrap" onClick={() => setShowCreateCourse(true)}>
-              <span className="inline-flex items-center gap-2">
-                <PlusCircle size={16} />
-                <span className="leading-none">Create Course</span>
-              </span>
-            </button>
-            {/* Notification Bell */}
-            <div className="relative mr-2" ref={notifRef}>
-              <button
-                className="p-3 btn-secondary rounded-xl relative"
-                onClick={() => setShowNotifications(!showNotifications)}
-              >
-                {notifications.some(n => !n.is_read) ? (
-                  <>
-                    <BellDot className="text-indigo-500" size={20} />
-                    <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse"></span>
-                  </>
-                ) : <Bell size={20} />}
-              </button>
+        </div>
 
-              {showNotifications && (
-                <div className="absolute right-0 mt-3 w-80 dropdown-card rounded-2xl z-[300] overflow-hidden">
-                  <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                    <h3 className="font-bold text-slate-900 dark:text-white">Notifications</h3>
-                    <button className="text-xs text-indigo-500 hover:underline" onClick={() => setShowNotifications(false)}>Close</button>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {notifications.length > 0 ? notifications.map(n => (
-                      <div key={n.id} className="relative group overflow-hidden border-b border-slate-100 dark:border-slate-800/50 last:border-0">
-                        {/* Swipe Container */}
-                        <div className="flex transition-transform duration-300 ease-out hover:-translate-x-16">
-                          <div
-                            className={`flex-1 p-4 cursor-pointer ${!n.is_read ? 'bg-indigo-500/5' : 'bg-white dark:bg-slate-800'}`}
-                            onClick={() => handleMarkAsRead(n.id)}
-                          >
-                            <div className="flex justify-between items-start mb-1">
-                              <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded ${n.type === 'quiz' ? 'bg-red-500/20 text-red-500' : 'bg-indigo-500/20 text-indigo-500'}`}>
-                                {n.type}
-                              </span>
-                              <span className="text-[10px] text-slate-400">{new Date(n.created_at).toLocaleDateString()}</span>
-                            </div>
-                            <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">{n.title}</h4>
-                            <p className="text-xs text-slate-500 dark:text-gray-400 leading-relaxed">{n.message}</p>
-                          </div>
-                          {/* Delete Button (revealed on hover/swipe) */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteNotification(n.id);
-                            }}
-                            className="w-16 bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    )) : (
-                      <div className="p-8 text-center text-slate-500 text-sm">No new notifications</div>
-                    )}
-                  </div>
-                </div>
+        <div className="flex items-center gap-4">
+          {activeTab === 'course-detail' && (
+            <button
+              className="header-create-btn !hidden md:!flex px-4 py-2 rounded-xl transition-all duration-200 text-sm font-bold shadow-sm whitespace-nowrap items-center gap-2"
+              onClick={() => setShowCreateQuiz(true)}
+            >
+              <CirclePlus size={16} />
+              <span>Create Quiz</span>
+            </button>
+          )}
+          {activeTab === 'courses' && (
+            <button
+              className="header-create-btn !hidden md:!flex px-4 py-2 rounded-xl transition-all duration-200 text-sm font-bold shadow-sm whitespace-nowrap items-center gap-2"
+              onClick={() => setShowCreateCourse(true)}
+            >
+              <CirclePlus size={16} />
+              <span>New Course</span>
+            </button>
+          )}
+
+          {/* Notification Bell */}
+          <div className="relative mr-2">
+            <button
+              className="header-action-btn p-3 rounded-xl relative transition-all duration-200"
+              onClick={() => setShowNotifications(!showNotifications)}
+            >
+              <Bell size={20} />
+              {notifications.some(n => !n.is_read) && (
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse"></span>
               )}
-            </div>
+            </button>
+
+            {showNotifications && (
+              <div ref={notificationRef} className="absolute right-0 mt-3 w-80 dropdown-card rounded-2xl z-[300] overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+                  <h3 className="font-bold text-sm uppercase tracking-widest text-slate-500">Notifications</h3>
+                  <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length > 0 ? (
+                    notifications.map(n => (
+                      <div key={n.id} className={`p-4 border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.is_read ? 'bg-indigo-500/5' : ''}`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded ${n.type === 'enrollment' ? 'bg-green-500/10 text-green-500' : 'bg-indigo-500/10 text-indigo-500'}`}>
+                            {n.type}
+                          </span>
+                          <span className="text-[10px] text-slate-400">{new Date(n.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">{n.title}</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{n.message}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 text-sm">No notifications</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+      </header>
 
+      <div className="dashboard-body flex flex-1 overflow-hidden relative">
+        {/* Sidebar */}
+        <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
+          <div className="flex justify-between items-center mb-10">
+            <h2 className="sidebar-title mb-0">Quizi Pro</h2>
+            <button className="md:hidden text-gray-400" onClick={toggleSidebar}>
+              <X size={24} />
+            </button>
+          </div>
+
+          <nav className="sidebar-nav">
+            <SidebarItem
+              icon={<Home size={18} />}
+              label="Overview"
+              active={activeTab === "overview"}
+              onClick={() => { setActiveTab("overview"); setIsSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Layers size={18} />}
+              label="My Courses"
+              active={activeTab === "courses"}
+              onClick={() => { setActiveTab("courses"); setIsSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Users size={18} />}
+              label="Students"
+              active={activeTab === "students"}
+              onClick={() => { setActiveTab("students"); setIsSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<ShieldAlert size={18} />}
+              label="Leave Requests"
+              active={activeTab === "leave-requests"}
+              onClick={() => { setActiveTab("leave-requests"); setIsSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<FileText size={18} />}
+              label="Quizzes"
+              active={activeTab === "all-quizzes"}
+              onClick={() => { setActiveTab("all-quizzes"); setIsSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<CheckCircle size={18} />}
+              label="Check Answer"
+              active={activeTab === "quiz-results"}
+              onClick={() => {
+                setActiveTab("quiz-results");
+                setGradingFlow('COURSES');
+                setGradingCourse(null);
+                setGradingQuiz(null);
+                setIsSidebarOpen(false);
+              }}
+            />
+            <SidebarItem
+              icon={<BarChart3 size={18} />}
+              label="Reports"
+              active={activeTab === "reports"}
+              onClick={() => { setActiveTab("reports"); setIsSidebarOpen(false); }}
+            />
+
+          </nav>
+
+
+          <div className="sidebar-footer">
+            <SidebarItem
+              icon={theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+              label={theme === 'light' ? "Dark Mode" : "Light Mode"}
+              onClick={toggleTheme}
+            />
+            <SidebarItem
+              icon={<User size={18} />}
+              label="Profile"
+              active={activeTab === "profile"}
+              onClick={() => {
+                if (activeTab !== "profile") setPreviousTab(activeTab);
+                setActiveTab("profile");
+                setIsSidebarOpen(false);
+              }}
+            />
+            <SidebarItem icon={<LogOut size={18} />} label="Logout" onClick={handleLogout} />
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="main flex-1 overflow-y-auto relative">
+
+          {/* Mobile FABs */}
+          {activeTab === 'course-detail' && (
+            <button 
+              className="mobile-fab md:hidden" 
+              onClick={() => setShowCreateQuiz(true)}
+              title="Create New Quiz"
+            >
+              <CirclePlus size={32} />
+            </button>
+          )}
+          {activeTab === 'courses' && (
+            <button 
+              className="mobile-fab md:hidden" 
+              onClick={() => setShowCreateCourse(true)}
+              title="Create New Course"
+            >
+              <CirclePlus size={32} />
+            </button>
+          )}
         <div className="content-area">
           {activeTab !== 'overview' && (
             <button 
@@ -1399,34 +1488,53 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
                 <div className="charts">
                   <div className="chart-card">
-                    <div className="flex justify-between items-center mb-6">
-                      <div>
-                        <h2 className="chart-title mb-0">Class Engagement</h2>
-                        <p className="text-xs text-slate-500">Quiz attempts in the last 7 days</p>
+                    <h3 className="chart-title flex items-center gap-2 mb-6">
+                      <BarChart3 size={20} className="text-indigo-500" />
+                      Class Engagement
+                    </h3>
+                    {engagementData.every(d => d === 0) ? (
+                      <div className="chart-placeholder line">
+                        <Activity size={32} className="mb-2 opacity-50 text-indigo-400" />
+                        <p>No engagement data available.</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-indigo-500 rounded-full"></span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase">Attempts</span>
-                      </div>
-                    </div>
-                    <MiniLineChart data={engagementData} labels={engagementLabels} />
+                    ) : (
+                      <MiniLineChart data={engagementData} labels={engagementLabels} />
+                    )}
                   </div>
                   <div className="chart-card">
                     <div className="flex justify-between items-center mb-6">
                       <div>
-                        <h2 className="chart-title mb-0">Grade Distribution</h2>
+                        <h3 className="chart-title flex items-center gap-2 mb-1">
+                          <TrendingUp size={20} className="text-indigo-500" />
+                          Grade Distribution
+                        </h3>
                         <p className="text-xs text-slate-500">Score ranges across all results</p>
                       </div>
                     </div>
-                    <BarChart data={distributionData} labels={distributionLabels} color="#10b981" />
+                    {distributionData.every(d => d === 0) ? (
+                      <div className="chart-placeholder bar">
+                        <BarChart3 size={32} className="mb-2 opacity-50 text-emerald-500" />
+                        <p>No grades recorded yet.</p>
+                      </div>
+                    ) : (
+                      <BarChart data={distributionData} labels={distributionLabels} color="#10b981" />
+                    )}
                   </div>
                 </div>
+
+                {/* Mobile FAB */}
+                <button
+                  className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 z-[100] active:scale-90 transition-transform"
+                  onClick={() => setShowCreateCourse(true)}
+                >
+                  <CirclePlus size={24} />
+                </button>
               </>
             );
           })()}
 
           {activeTab === "courses" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {myCourses.map(course => (
                 <div
                   key={course.id}
@@ -1482,7 +1590,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                 className="chart-card border-dashed border-2 border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 transition group"
                 onClick={() => setShowCreateCourse(true)}
               >
-                <PlusCircle size={48} className="text-gray-600 group-hover:text-indigo-500 mb-2" />
+                <CirclePlus size={48} className="text-gray-600 group-hover:text-indigo-500 mb-2" />
                 <p className="text-gray-500 group-hover:text-indigo-400 font-medium">Create New Course</p>
               </div>
             </div>
@@ -1505,7 +1613,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   className="btn-primary flex items-center gap-2 px-6 py-3 rounded-xl shadow-lg shadow-indigo-500/20"
                   onClick={() => setShowCreateQuiz(true)}
                 >
-                  <PlusCircle size={18} />
+                  <CirclePlus size={18} />
                   Create New Quiz
                 </button>
               </div>
@@ -1518,25 +1626,25 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
                     {courseQuizzes.map(quiz => (
-                      <div key={quiz.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex justify-between items-center group hover:border-indigo-500 transition shadow-sm dark:shadow-none">
-                        <div className="flex gap-4 items-center">
-                          <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                      <div key={quiz.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group hover:border-indigo-500 transition shadow-sm dark:shadow-none">
+                        <div className="flex gap-4 items-center w-full">
+                          <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0">
                             <FileText size={20} />
                           </div>
-                          <div>
-                            <h4 className="font-bold text-lg text-slate-900 dark:text-white">{quiz.title}</h4>
-                            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-gray-400 mt-1">
-                              <span className="flex items-center gap-1"><Clock size={12} /> {quiz.duration}m</span>
-                              <span className="flex items-center gap-1"><Key size={12} /> {quiz.access_key}</span>
-                              <span className={`px-2 py-0.5 rounded-full ${quiz.status === 'published' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-gray-300'}`}>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-lg text-slate-900 dark:text-white truncate">{quiz.title}</h4>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-gray-400 mt-1">
+                              <span className="flex items-center gap-1 whitespace-nowrap"><Clock size={12} /> {quiz.duration}m</span>
+                              <span className="flex items-center gap-1 whitespace-nowrap"><Key size={12} /> {quiz.access_key}</span>
+                              <span className={`px-2 py-0.5 rounded-full whitespace-nowrap ${quiz.status === 'published' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-gray-300'}`}>
                                 {quiz.status}
                               </span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 w-full sm:w-auto">
                           <button
-                            className="bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-600/20 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600 hover:text-white transition"
+                            className="flex-1 sm:flex-none bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-600/20 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600 hover:text-white transition"
                             onClick={() => { setSelectedQuiz(quiz); setActiveTab("question-management"); }}
                           >
                             Questions
@@ -1720,6 +1828,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           )}
 
           {activeTab === "quiz-results" && (
+
             <div className="flex flex-col gap-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/20">
                 <div>
@@ -1731,35 +1840,22 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Course</label>
                     <select
-                      className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-3 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 dark:text-slate-200 min-w-[200px]"
+                      className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-3 outline-none font-bold text-slate-700 dark:text-slate-200 min-w-[200px]"
                       value={gradingCourse?.id || ""}
                       onChange={async (e) => {
                         const courseId = e.target.value;
                         if (!courseId) {
-                          // All courses selected
                           setGradingCourse(null);
                           setGradingQuiz(null);
-                          // show all quizzes
                           setGradingQuizzes(allQuizzes || []);
                           return;
                         }
-
                         const course = myCourses.find(c => c.id === parseInt(courseId));
                         setGradingCourse(course);
                         setGradingQuiz(null);
                         if (course) {
                           const { data, error } = await supabase.from('quizzes').select('*').eq('course_id', course.id);
-                          if (!error) setCourseQuizzes(data);
-                          try {
-                            const { data, error } = await supabase.from('quizzes').select('*').eq('course_id', course.id);
-                            if (!error) setGradingQuizzes(data);
-                            else setGradingQuizzes([]);
-                          } catch (err) {
-                            console.error("Failed to fetch quizzes", err);
-                            setGradingQuizzes([]);
-                          }
-                        } else {
-                          setGradingQuizzes([]);
+                          if (!error) setGradingQuizzes(data);
                         }
                       }}
                     >
@@ -1773,7 +1869,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Quiz</label>
                     <select
-                      className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-3 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 dark:text-slate-200 min-w-[200px]"
+                      className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-3 outline-none font-bold text-slate-700 dark:text-slate-200 min-w-[200px]"
                       value={gradingQuiz?.id || ""}
                       onChange={(e) => {
                         const quizId = e.target.value;
@@ -1794,84 +1890,75 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col gap-8">
-                {/* Show results for selected quiz, or for selected course, or all results by default */}
-                <div className="overflow-hidden bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-[0.2em] font-black">
-                        <th className="px-10 py-6 border-b border-slate-100 dark:border-slate-800">Student</th>
-                        <th className="px-10 py-6 text-center border-b border-slate-100 dark:border-slate-800">Score</th>
-                        <th className="px-10 py-6 text-center border-b border-slate-100 dark:border-slate-800">Violations</th>
-                        <th className="px-10 py-6 border-b border-slate-100 dark:border-slate-800">Status</th>
-                        <th className="px-10 py-6 text-right border-b border-slate-100 dark:border-slate-800">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {(
-                        allResults
-                          .filter(r => {
-                            if (gradingQuiz) return r.quiz_id === gradingQuiz.id;
-                            if (gradingCourse) return r.quiz && r.quiz.course && r.quiz.course.id === gradingCourse.id;
-                            return true; // no filter -> show all
-                          })
-                          .slice()
-                          .reverse()
-                      ).map((res) => {
-                        const isGraded = res.feedback && Object.keys(res.feedback).length > 0;
-                        return (
-                          <tr key={res.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all group">
-                            <td className="px-10 py-7">
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center font-black group-hover:scale-110 transition-transform">
-                                  {res.student?.full_name?.charAt(0) || "S"}
-                                </div>
-                                <div className="overflow-hidden">
-                                  <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-lg">{res.student?.full_name}</div>
-                                  <div className="text-xs text-slate-500 truncate font-medium">{res.student?.email}</div>
-                                </div>
+
+              <div className="premium-table-container">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th className="!text-center">Score</th>
+                      <th className="!text-center">Violations</th>
+                      <th>Status</th>
+                      <th className="!text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      allResults
+                        .filter(r => {
+                          if (gradingQuiz) return r.quiz_id === gradingQuiz.id;
+                          if (gradingCourse) return r.quiz && r.quiz.course && r.quiz.course.id === gradingCourse.id;
+                          return true;
+                        })
+                        .slice()
+                        .reverse()
+                    ).map((res) => {
+                      const isGraded = res.feedback && Object.keys(res.feedback).length > 0;
+                      return (
+                        <tr key={res.id}>
+                          <td data-label="Student">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-500 flex items-center justify-center font-black">
+                                {res.student?.full_name?.charAt(0)}
                               </div>
-                            </td>
-                            <td className="px-10 py-7 text-center">
-                              <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/5 rounded-2xl">
-                                <span className="font-black text-2xl text-indigo-500">{res.score}</span>
-                                <span className="text-slate-400 text-xs font-bold">/ {res.total_marks}</span>
+                              <div>
+                                <div className="font-bold text-slate-900 dark:text-white">{res.student?.full_name}</div>
+                                <div className="text-[10px] text-slate-500">{res.student?.email}</div>
                               </div>
-                            </td>
-                            <td className="px-10 py-7 text-center">
-                              <span className={`px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${res.eye_tracking_violations > 3 ? 'bg-red-500/10 text-red-500 shadow-lg shadow-red-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-                                {res.eye_tracking_violations}
-                              </span>
-                            </td>
-                            <td className="px-10 py-7">
-                              {isGraded ? (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                                  <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Graded</span>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]"></div>
-                                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Marking Needed</span>
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-10 py-7 text-right">
-                              <button
-                                className="btn-primary px-6 py-3 rounded-2xl text-sm font-black shadow-xl shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 ml-auto"
-                                onClick={() => {
-                                  setSelectedAttempt(res);
-                                  setShowGradingModal(true);
-                                }}
-                              >
-                                Review &amp; Mark
-                                <ArrowRight size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {(
+                            </div>
+                          </td>
+                          <td data-label="Score" className="!text-center">
+                            <div className="inline-flex items-center gap-1">
+                              <span className="font-black text-lg text-indigo-500">{res.score}</span>
+                              <span className="text-slate-400 text-xs">/ {res.total_marks}</span>
+                            </div>
+                          </td>
+                          <td data-label="Violations" className="!text-center">
+                            <span className={`status-badge ${res.eye_tracking_violations > 3 ? 'status-badge-error' : 'status-badge-indigo'}`}>
+                              {res.eye_tracking_violations} Alerts
+                            </span>
+                          </td>
+                          <td data-label="Status">
+                            <span className={`status-badge ${isGraded ? 'status-badge-success' : 'status-badge-warning'}`}>
+                              {isGraded ? 'Graded' : 'Pending'}
+                            </span>
+                          </td>
+                          <td data-label="Action" className="!text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedAttempt(res);
+                                setShowGradingModal(true);
+                              }}
+                              className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-900/20 active:scale-95 transition-all"
+                            >
+                              Check
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    { (
                         gradingQuiz
                           ? allResults.filter(r => r.quiz_id === gradingQuiz.id).length === 0
                           : gradingCourse
@@ -1887,13 +1974,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                               </div>
                             </td>
                           </tr>
-                        )}
+                      )}
+
+
                     </tbody>
                   </table>
                 </div>
               </div>
 
-            </div>
+
           )}
 
           {activeTab === "all-quizzes" && (
@@ -1934,25 +2023,25 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                     q.course?.title.toLowerCase().includes(quizSearchQuery.toLowerCase())
                   )
                   .map(quiz => (
-                    <div key={quiz.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex justify-between items-center group hover:border-indigo-500 transition shadow-sm dark:shadow-none">
-                      <div className="flex gap-4 items-center">
-                        <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                    <div key={quiz.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group hover:border-indigo-500 transition shadow-sm dark:shadow-none">
+                      <div className="flex gap-4 items-center w-full">
+                        <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl shrink-0">
                           <FileText size={20} />
                         </div>
-                        <div>
-                          <h4 className="font-bold text-lg text-slate-900 dark:text-white">{quiz.title}</h4>
-                          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-gray-400 mt-1">
-                            <span className="flex items-center gap-1"><Layers size={12} /> {quiz.course?.title}</span>
-                            <span className="flex items-center gap-1"><Clock size={12} /> {quiz.duration}m</span>
-                            <span className={`px-2 py-0.5 rounded-full ${quiz.status === 'published' ? 'bg-green-500/10 text-green-400' : 'bg-slate-700 text-gray-300'}`}>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-lg text-slate-900 dark:text-white truncate">{quiz.title}</h4>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-gray-400 mt-1">
+                            <span className="flex items-center gap-1 whitespace-nowrap"><Layers size={12} /> {quiz.course?.title}</span>
+                            <span className="flex items-center gap-1 whitespace-nowrap"><Clock size={12} /> {quiz.duration}m</span>
+                            <span className={`px-2 py-0.5 rounded-full whitespace-nowrap ${quiz.status === 'published' ? 'bg-green-500/10 text-green-400' : 'bg-slate-700 text-gray-300'}`}>
                               {quiz.status}
                             </span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button
-                          className="bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-600/20 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600 hover:text-white transition"
+                          className="flex-1 sm:flex-none bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border border-indigo-600/20 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-600 hover:text-white transition"
                           onClick={() => {
                             setSelectedQuiz(quiz);
                             setSelectedCourse(quiz.course);
@@ -1995,249 +2084,238 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           )}
 
           {activeTab === "reports" && (
-            <div className="flex flex-col gap-6">
-              <div className="flex justify-between items-end">
+            <div className="flex flex-col gap-8">
+              <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-3xl font-bold">Student Reports</h2>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Student Reports</h2>
                   <p className="text-slate-500 text-sm mt-1">Detailed breakdown of quiz performance and proctoring logs.</p>
                 </div>
               </div>
 
               {/* Analytics Summary */}
               {allResults.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-indigo-600 p-6 rounded-3xl shadow-xl shadow-indigo-600/20 text-white">
-                    <p className="text-indigo-100 text-xs font-black uppercase tracking-widest mb-1">Average Score</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-indigo-600 p-6 rounded-[2rem] shadow-xl shadow-indigo-600/20 text-white">
+                    <p className="text-indigo-100 text-[10px] font-black uppercase tracking-widest mb-1">Average Score</p>
                     <h3 className="text-3xl font-bold">
-                      {(allResults.reduce((acc, r) => acc + (r.score / r.total_marks), 0) / allResults.length * 100).toFixed(1)}%
+                      {(allResults.reduce((acc, r) => acc + (r.score / Math.max(r.total_marks, 1)), 0) / allResults.length * 100).toFixed(1)}%
                     </h3>
                   </div>
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-800">
-                    <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Total Pass</p>
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Pass</p>
                     <h3 className="text-3xl font-bold text-green-500">
-                      {allResults.filter(r => (r.score / r.total_marks) >= 0.4).length}
+                      {allResults.filter(r => (r.score / Math.max(r.total_marks, 1)) >= 0.4).length}
                     </h3>
                   </div>
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-800">
-                    <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Total Fail</p>
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Fail</p>
                     <h3 className="text-3xl font-bold text-red-500">
-                      {allResults.filter(r => (r.score / r.total_marks) < 0.4).length}
+                      {allResults.filter(r => (r.score / Math.max(r.total_marks, 1)) < 0.4).length}
                     </h3>
                   </div>
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
                     <div>
-                      <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Most Alerts</p>
+                      <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Proctor Alerts</p>
                       <h3 className="text-3xl font-bold text-amber-500">
-                        {Math.max(...allResults.map(r => r.eye_tracking_violations), 0)}
+                        {allResults.reduce((acc, r) => acc + (r.eye_tracking_violations || 0), 0)}
                       </h3>
                     </div>
                     <ShieldAlert className="text-amber-500/20" size={40} />
                   </div>
                 </div>
               )}
-              <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                        <th className="p-4 font-bold">Student</th>
-                        <th className="p-4 font-bold">Course</th>
-                        <th className="p-4 font-bold">Quiz</th>
-                        <th className="p-4 font-bold text-center">Score</th>
-                        <th className="p-4 font-bold">Percentage</th>
-                        <th className="p-4 font-bold text-center">Violations</th>
-                        <th className="p-4 font-bold">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allResults.map(result => (
-                        <React.Fragment key={result.id}>
-                          <tr className="border-t border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition group">
-                            <td className="p-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-[10px] font-bold">
-                                  {result.student?.full_name?.split(' ').map(n => n[0]).join('')}
+
+              <div className="premium-table-container">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Course</th>
+                      <th>Quiz</th>
+                      <th className="text-center">Score</th>
+                      <th>Percentage</th>
+                      <th className="text-center">Violations</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allResults.map(result => (
+                      <React.Fragment key={result.id}>
+                        <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                          <td data-label="Student">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-[10px] font-black">
+                                {result.student?.full_name?.charAt(0)}
+                              </div>
+                              <span className="font-bold text-slate-900 dark:text-white">{result.student?.full_name}</span>
+                            </div>
+                          </td>
+                          <td data-label="Course">
+                            <span className="text-sm text-slate-500">{result.quiz?.courses?.title || "N/A"}</span>
+                          </td>
+                          <td data-label="Quiz">
+                            <span className="text-sm font-medium text-slate-700 dark:text-gray-300">{result.quiz?.title}</span>
+                          </td>
+                          <td data-label="Score" className="text-center font-mono text-sm">
+                            <span className="text-slate-900 dark:text-white font-bold">{result.score}</span>
+                            <span className="text-slate-400"> / {result.total_marks}</span>
+                          </td>
+                          <td data-label="Percentage">
+                            <span className={`status-badge ${(result.score / Math.max(result.total_marks, 1)) >= 0.4 ? 'status-badge-success' : 'status-badge-error'}`}>
+                              {((result.score / Math.max(result.total_marks, 1)) * 100).toFixed(1)}%
+                            </span>
+                          </td>
+                          <td data-label="Violations" className="text-center">
+                            <button 
+                              onClick={() => {
+                                if (result.eye_tracking_violations > 0) setExpandedResultId(expandedResultId === result.id ? null : result.id);
+                              }}
+                              className={`status-badge ${result.eye_tracking_violations > 0 ? 'status-badge-error cursor-pointer' : 'status-badge-success'}`}
+                            >
+                              {result.eye_tracking_violations || 0} Alerts
+                            </button>
+                          </td>
+                          <td data-label="Date">
+                            <span className="text-xs text-slate-500">{new Date(result.completed_at).toLocaleDateString()}</span>
+                          </td>
+                        </tr>
+                        {expandedResultId === result.id && result.timeline && (
+                          <tr className="bg-slate-50 dark:bg-slate-900/30">
+                            <td colSpan="7" className="p-4">
+                              <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-red-500/10 shadow-inner max-w-2xl mx-auto">
+                                <h5 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-4 flex items-center gap-2">
+                                  <ShieldAlert size={14} /> Violation Timeline
+                                </h5>
+                                <div className="space-y-2">
+                                  {result.timeline.map((log, lidx) => (
+                                    <div key={lidx} className="flex justify-between items-center text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50">
+                                      <span className="font-mono text-slate-400">{log.time}</span>
+                                      <span className="font-bold text-slate-700 dark:text-gray-300">{log.reason}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                                <span className="text-sm font-medium text-slate-900 dark:text-white">{result.student?.full_name}</span>
                               </div>
                             </td>
-                            <td className="p-4 text-sm text-slate-700 dark:text-gray-300">{result.quiz?.course?.title}</td>
-                            <td className="p-4 text-sm text-slate-700 dark:text-gray-300">{result.quiz?.title}</td>
-                            <td className="p-4 font-mono text-sm text-center">
-                              <span className="text-slate-900 dark:text-white">{result.score}</span>
-                              <span className="text-gray-600"> / {result.total_marks}</span>
-                            </td>
-                            <td className="p-4 text-center">
-                              <span className={`px-2 py-1 rounded text-[10px] font-bold ${(result.score / result.total_marks) >= 0.8 ? 'bg-green-500/10 text-green-400' :
-                                (result.score / result.total_marks) >= 0.5 ? 'bg-amber-500/10 text-amber-400' :
-                                  'bg-red-500/10 text-red-400'
-                                }`}>
-                                {((result.score / result.total_marks) * 100).toFixed(1)}%
-                              </span>
-                            </td>
-                            <td className="p-4 text-center">
-                              <button
-                                onClick={() => {
-                                  if (result.eye_tracking_violations > 0) {
-                                    // Toggle expanded row logic
-                                    const key = `expanded_${result.id}`;
-                                    setExpandedResultId(expandedResultId === result.id ? null : result.id);
-                                  }
-                                }}
-                                className={`px-3 py-1 rounded-full text-[10px] font-black transition-all ${result.eye_tracking_violations > 0
-                                  ? 'bg-red-500/20 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white cursor-pointer'
-                                  : 'bg-green-500/10 text-green-500'}`}
-                              >
-                                {result.eye_tracking_violations} Alerts
-                              </button>
-                            </td>
-                            <td className="p-4 text-xs text-gray-500">{new Date(result.completed_at).toLocaleDateString()}</td>
                           </tr>
-                          {expandedResultId === result.id && result.timeline && (
-                            <tr className="bg-slate-50 dark:bg-slate-900/50">
-                              <td colSpan="7" className="p-4">
-                                <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-red-500/10 shadow-inner">
-                                  <h5 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-3 flex items-center gap-2">
-                                    <ShieldAlert size={12} /> Violation Timeline
-                                  </h5>
-                                  <div className="space-y-2">
-                                    {result.timeline.map((log, lidx) => (
-                                      <div key={lidx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-900/30">
-                                        <span className="font-mono text-slate-400">{log.time}</span>
-                                        <span className="font-bold text-slate-700 dark:text-gray-300">{log.reason}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                      {allResults.length === 0 && (
-                        <tr>
-                          <td colSpan="7" className="p-12 text-center text-gray-500">No results available yet.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                    {allResults.length === 0 && (
+                      <tr>
+                        <td colSpan="7" className="py-24 text-center text-slate-400">
+                          <BarChart3 size={48} className="mx-auto mb-4 opacity-10" />
+                          <p className="font-bold">No results recorded yet.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
           {activeTab === "students" && (
-            <div className="flex flex-col gap-6">
-              <div className="flex justify-between items-end">
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h2 className="text-3xl font-bold">Enrolled Students</h2>
-                  <p className="text-slate-500 text-sm mt-1">Students enrolled in your courses.</p>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Enrolled Students</h2>
+                  <p className="text-slate-500 text-sm mt-1">Manage and track students across your courses</p>
+                </div>
+                
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Course:</span>
+                  <select
+                    value={studentCourseFilter}
+                    onChange={(e) => setStudentCourseFilter(e.target.value)}
+                    className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none pr-8 py-1 cursor-pointer"
+                  >
+                    <option value="all">All Courses</option>
+                    {myCourses.map(c => (
+                      <option key={c.id} value={c.course_code}>{c.title}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <label className="text-sm text-slate-600">Filter by Course:</label>
-                <select
-                  value={studentCourseFilter}
-                  onChange={(e) => setStudentCourseFilter(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 pl-3 pr-3 py-2 rounded-xl text-sm outline-none"
-                >
-                  <option value="all">All Courses</option>
-                  {myCourses.map(c => (
-                    <option key={c.id} value={c.course_code}>{c.title} - {c.course_code}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                        <th className="p-4 font-bold">Student Name</th>
-                        <th className="p-4 font-bold">Email</th>
-                        <th className="p-4 font-bold">Enrolled Course</th>
-                        <th className="p-4 font-bold">Code</th>
-                        <th className="p-4 font-bold">Joined At</th>
-                        <th className="p-4 font-bold text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(
-                        studentCourseFilter === 'all'
-                          ? myStudents
-                          : myStudents.filter(s => s.course_code === studentCourseFilter)
-                      ).map((s, idx) => (
-                        <tr key={idx} className="border-t border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
-                          <td className="p-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-bold">
-                                {s.full_name?.charAt(0)}
-                              </div>
-                              <span className="font-bold text-slate-900 dark:text-white">{s.full_name}</span>
+              <div className="premium-table-container">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Student Name</th>
+                      <th>Email</th>
+                      <th>Course</th>
+                      <th>Code</th>
+                      <th>Joined At</th>
+                      <th className="text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      studentCourseFilter === 'all'
+                        ? myStudents
+                        : myStudents.filter(s => s.course_code === studentCourseFilter)
+                    ).map((s, idx) => (
+                      <tr key={idx}>
+                        <td data-label="Student Name">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-500 flex items-center justify-center font-black">
+                              {s.full_name?.charAt(0)}
                             </div>
-                          </td>
-                          <td className="p-4 text-sm text-slate-500">{s.email}</td>
-                          <td className="p-4 text-sm font-medium">{s.course_title}</td>
-                          <td className="p-4 text-xs align-middle">
-                            <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded inline-block">{s.course_code}</span>
-                          </td>
-                          <td className="p-4 text-xs text-gray-500">{new Date(s.enrolled_at).toLocaleDateString()}</td>
-                          <td className="p-4 text-center">
-                            {kickingStudentId === `${s.student_id}_${s.course_id}` ? (
-                              <div className="flex items-center justify-center gap-2">
-                                {kickCountdown > 0 ? (
-                                  <button disabled className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg text-xs font-bold animate-pulse">
-                                    Confirm in {kickCountdown}s
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => {
-                                      handleKickStudent(s.course_id, s.student_id);
-                                      setKickingStudentId(null);
-                                    }}
-                                    className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 shadow-md shadow-red-900/20"
-                                  >
-                                    Confirm Kick
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    setKickingStudentId(null);
-                                    setKickCountdown(0);
-                                  }}
-                                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
+                            <span className="font-bold text-slate-900 dark:text-white">{s.full_name}</span>
+                          </div>
+                        </td>
+                        <td data-label="Email">
+                          <span className="text-sm text-slate-500">{s.email}</span>
+                        </td>
+                        <td data-label="Course">
+                          <span className="text-sm font-medium text-indigo-500">{s.course_title}</span>
+                        </td>
+                        <td data-label="Code">
+                          <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-slate-600 dark:text-slate-300">{s.course_code}</span>
+                        </td>
+                        <td data-label="Joined At">
+                          <span className="text-xs text-slate-400">{new Date(s.enrolled_at).toLocaleDateString()}</span>
+                        </td>
+                        <td data-label="Actions" className="text-center">
+                          {kickingStudentId === `${s.student_id}_${s.course_id}` ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <button 
                                 onClick={() => {
-                                  setKickingStudentId(`${s.student_id}_${s.course_id}`);
-                                  setKickCountdown(3);
+                                  handleKickStudent(s.course_id, s.student_id);
+                                  setKickingStudentId(null);
                                 }}
-                                className="px-3 py-1.5 text-red-500 hover:bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
-                                title="Remove student from course"
+                                className="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-900/20 active:scale-95 transition-all"
                               >
-                                Kick
+                                {kickCountdown > 0 ? `Confirm in ${kickCountdown}s` : "Confirm Kick"}
                               </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {(
-                        studentCourseFilter === 'all'
-                          ? myStudents.length === 0
-                          : myStudents.filter(s => s.course_code === studentCourseFilter).length === 0
-                      ) && (
-                          <tr>
-                            <td colSpan="5" className="p-12 text-center text-gray-500">No students enrolled yet.</td>
-                          </tr>
-                        )}
-                    </tbody>
-                  </table>
-                </div>
+                              <button onClick={() => setKickingStudentId(null)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition">
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setKickingStudentId(`${s.student_id}_${s.course_id}`);
+                                setKickCountdown(3);
+                              }}
+                              className="px-4 py-2 bg-red-500/10 text-red-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all active:scale-95"
+                            >
+                              Kick
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {myStudents.length === 0 && (
+                      <tr>
+                        <td colSpan="6" className="py-24 text-center text-slate-400">
+                          <Users size={48} className="mx-auto mb-4 opacity-10" />
+                          <p className="font-bold">No students found.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -2304,7 +2382,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                                 </span>
                               </div>
                             </div>
-                            <div className="hidden md:block">
+                            <div className="hidden sm:block">
                               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Request Date</p>
                               <p className="text-xs font-bold text-slate-600 dark:text-slate-300">{new Date(req.created_at).toLocaleDateString()}</p>
                             </div>
@@ -2316,13 +2394,13 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                         {req.status === 'pending' ? (
                           <>
                             <button
-                              onClick={() => handleProcessLeaveRequest(req.id, 'accepted')}
+                              onClick={() => handleProcessLeaveRequest(req, 'accepted')}
                               className="flex-1 btn-primary bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-green-900/10 flex items-center justify-center gap-2 transition-transform active:scale-95"
                             >
                               <CheckCircle size={18} /> Accept
                             </button>
                             <button
-                              onClick={() => handleProcessLeaveRequest(req.id, 'declined')}
+                              onClick={() => handleProcessLeaveRequest(req, 'declined')}
                               className="flex-1 btn-secondary border-red-500/30 text-red-500 hover:bg-red-500/5 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-transform active:scale-95"
                             >
                               <X size={18} /> Decline
@@ -2677,7 +2755,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   <div className="flex-1 flex flex-col gap-6">
                     <div className="flex items-center gap-4 mb-2">
                       <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-600/20">
-                        <PlusCircle size={24} />
+                        <CirclePlus size={24} />
                       </div>
                       <div>
                         <h2 className="text-2xl font-bold">Add Question</h2>
@@ -3624,7 +3702,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
               <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-2xl shadow-2xl my-8">
                   <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                    <PlusCircle className="text-indigo-500" />
+                    <CirclePlus className="text-indigo-500" />
                     Configure New Quiz
                   </h2>
                   <form onSubmit={handleCreateQuiz} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3771,7 +3849,8 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
             )
           }
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
@@ -3788,16 +3867,20 @@ function SidebarItem({ icon, label, active, onClick }) {
 function StatCard({ title, value, trend, icon, onClick }) {
   return (
     <div
-      className={`stat-card group ${onClick ? "cursor-pointer hover:border-indigo-500/50 transition-all active:scale-[0.98]" : ""} shadow-sm`}
+      className={`stat-card group ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
     >
       <div className="flex flex-col">
-        <p className="stat-title text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]">{title}</p>
-        <p className="stat-value text-slate-900 dark:text-white font-black">{value}</p>
-        <p className="stat-trend positive bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-1">{trend}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <p className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{value}</p>
+        <div className="flex items-center gap-1.5 mt-2">
+          <span className="stat-trend positive bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+            {trend}
+          </span>
+        </div>
       </div>
-      <div className="stat-icon bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 p-3 rounded-2xl group-hover:scale-110 transition-transform">
-        {icon}
+      <div className="stat-icon bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 p-4 rounded-2xl group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
+        {React.cloneElement(icon, { size: 24 })}
       </div>
     </div>
   );

@@ -41,31 +41,31 @@ const Hero = () => {
       title: "Quizi Hub",
       text: "Unleash Your Academic Success with Quizi Hub's Exam Excellence Platform.",
       image: masteryIllustration,
-      bgColor: "#91c5e8ff" // Mint Green
+      bgColor: "#c5f1d6d5" // Mint Green
     },
     {
       title: "AI Eye-Tracking",
       text: "Our smart proctoring system monitors focus to ensure a fair and honest assessment for everyone.",
       image: aiIllustration,
-      bgColor: "#90b7d0ff" // Light Blue
+      bgColor: "rgba(195, 238, 201, 0.94)" // Light Blue
     },
     {
       title: "Anti-Cheat System",
       text: "Stay in the zone. We detect and prevent tab-switching and external distractions automatically.",
       image: antiCheatIllustration,
-      bgColor: "#c6a8e4ff" // Lavender
+      bgColor: "#b8cfbcee" // Lavender
     },
     {
       title: "Real-time Analytics",
       text: "Get instant feedback and deep insights into your performance right after you finish.",
       image: analyticsIllustration,
-      bgColor: "#f9f0ea" // Peach
+      bgColor: "#d3e4e4e8" // Peach
     },
     {
       title: "Collaborative Learning",
       text: "Connect with teachers and peers in a secure environment designed for modern education.",
       image: collaborationIllustration,
-      bgColor: "#f9f9ea" // Soft Yellow
+      bgColor: "rgba(255, 255, 255, 0.9)" // Soft Yellow
     },
     {
       title: "Learn Anywhere",

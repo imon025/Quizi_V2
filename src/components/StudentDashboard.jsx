@@ -32,7 +32,9 @@ import {
   Eye,
   EyeOff,
   Pencil,
-  Trash2
+  Trash2,
+  Plus,
+  CirclePlus
 } from "lucide-react";
 import "./dashboard.css";
 import { useTheme } from "../context/ThemeContext";
@@ -42,6 +44,19 @@ import { supabase } from "../supabaseClient";
 // Helper Component for Bar Chart
 const BarChart = ({ data, labels, color }) => {
   const max = Math.max(...data, 1);
+  const isEmpty = data.length === 0 || data.every(val => val === 0);
+
+  if (isEmpty) {
+    return (
+      <div className="flex flex-col gap-8 w-full text-slate-500 h-full items-center justify-center min-h-[160px]">
+        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+          <BarChart3 size={32} className="opacity-20" />
+          <span className="text-sm font-medium">No quiz data available</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8 w-full text-slate-500">
       <div className="flex items-end gap-2 h-40 w-full relative mb-2">
@@ -58,7 +73,7 @@ const BarChart = ({ data, labels, color }) => {
               className={`w-full rounded-t-lg transition-all duration-700 hover:opacity-80 relative shadow-sm`}
               style={{
                 height: `${(val / max) * 100}%`,
-                backgroundColor: val >= 0 ? color : 'transparent',
+                backgroundColor: val > 0 ? color : 'transparent',
                 minHeight: val > 0 ? '4px' : '0'
               }}
             >
@@ -71,9 +86,9 @@ const BarChart = ({ data, labels, color }) => {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1 px-2">
+      <div className={`grid gap-2 px-2`} style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}>
         {labels.map((l, i) => (
-          <span key={i} className="text-[8px] md:text-[10px] font-bold uppercase text-center truncate">{l}</span>
+          <span key={i} className="text-[10px] font-bold uppercase text-slate-500 text-center truncate px-1" title={l}>{l}</span>
         ))}
       </div>
     </div>
@@ -84,14 +99,26 @@ const BarChart = ({ data, labels, color }) => {
 const MiniLineChart = ({ data, labels }) => {
   const max = Math.max(...data, 1);
   const padding = 10;
+  const isEmpty = data.length === 0 || data.every(val => val === 0);
+
+  if (isEmpty) {
+    return (
+      <div className="h-44 w-full flex flex-col relative text-slate-500 items-center justify-center">
+        <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+          <TrendingUp size={32} className="opacity-20" />
+          <span className="text-sm font-medium">No quiz data available</span>
+        </div>
+      </div>
+    );
+  }
 
   const points = data.map((val, i) => {
-    const x = padding + (i / Math.max(data.length - 1, 1)) * (100 - 2 * padding);
+    const x = data.length === 1 ? 50 : padding + (i / (data.length - 1)) * (100 - 2 * padding);
     const y = padding + (100 - 2 * padding) - (val / max) * (100 - 2 * padding);
     return `${x},${y}`;
   });
 
-  const pathD = points.length > 0 ? `M ${points[0]} L ${points.slice(1).join(' L ')}` : '';
+  const pathD = points.length > 1 ? `M ${points[0]} L ${points.slice(1).join(' L ')}` : (points.length === 1 ? `M ${points[0]} L ${points[0]}` : '');
   const areaD = points.length > 0 ? `${pathD} V 90 H ${padding} Z` : '';
 
   return (
@@ -138,9 +165,9 @@ const MiniLineChart = ({ data, labels }) => {
           })}
         </svg>
       </div>
-      <div className="grid grid-cols-7 gap-1 px-2">
+      <div className={`grid gap-2 px-2 mt-4`} style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}>
         {labels.map((l, i) => (
-          <span key={i} className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-tighter text-center truncate">{l}</span>
+          <span key={i} className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-tighter text-center truncate" title={l}>{l}</span>
         ))}
       </div>
     </div>
@@ -198,17 +225,53 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
     localStorage.setItem("student_activeTab", activeTab);
   }, [activeTab]);
 
+
   useEffect(() => {
     let timer;
     if (leavingCourseId && leaveCountdown > 0) {
       timer = setInterval(() => {
         setLeaveCountdown(prev => prev - 1);
       }, 1000);
-    } else if (leaveCountdown === 0 && leavingCourseId) {
-      // Countdown finished
     }
     return () => clearInterval(timer);
   }, [leavingCourseId, leaveCountdown]);
+
+  // Real-time Enrollment Listener
+  useEffect(() => {
+    let channel;
+
+    const setupSubscription = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel(`enrollment_changes_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'enrollments',
+            // filter removed due to Supabase DELETE replica limitations
+          },
+          async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data } = await supabase.from('enrollments').select('courses(*)').eq('student_id', user.id);
+              setMyCourses(data?.map(e => e.courses) || []);
+              toast.success("Course un-enrolled automatically.");
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupSubscription();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleProfilePictureUpload = async (e) => {
     const file = e.target.files[0];
@@ -273,6 +336,21 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
   const handleRequestLeave = async (courseId) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Check for existing pending request
+      const { data: existing } = await supabase
+        .from('leave_requests')
+        .select('status')
+        .eq('student_id', user.id)
+        .eq('course_id', courseId)
+        .eq('status', 'pending')
+        .single();
+
+      if (existing) {
+        toast.info("You already have a pending leave request for this course.");
+        return;
+      }
+
       const { error } = await supabase
         .from('leave_requests')
         .insert({
@@ -284,7 +362,25 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
       if (error) throw error;
       toast.success("Leave request submitted!");
     } catch (err) {
-      toast.error(err.message || "Request failed");
+      // Ignore PGRST116 (No rows found) which is expected from .single()
+      if (err.code !== 'PGRST116') {
+        toast.error(err.message || "Request failed");
+      } else {
+        // Proceed with insertion if PGRST116 was thrown by single()
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error: insertErr } = await supabase
+          .from('leave_requests')
+          .insert({
+            student_id: user.id,
+            course_id: courseId,
+            status: 'pending'
+          });
+        if (insertErr) {
+          toast.error(insertErr.message || "Request failed");
+        } else {
+          toast.success("Leave request submitted!");
+        }
+      }
     }
   };
 
@@ -435,6 +531,15 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
 
       if (error) throw error;
 
+      // Notify teacher
+      await supabase.from('notifications').insert({
+        user_id: selectedCourseForEnroll.teacher_id,
+        title: 'New Student Joined',
+        message: `${studentData.full_name || 'A student'} has joined your course: "${selectedCourseForEnroll.title}".`,
+        type: 'enrollment',
+        is_read: false
+      });
+
       toast.success("Enrolled successfully!");
       setShowEnrollModal(false);
       setEnrollKey("");
@@ -455,7 +560,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="dashboard">
+    <div className="dashboard flex flex-col h-screen overflow-hidden">
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div
@@ -464,155 +569,178 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
         />
       )}
 
-      {/* Sidebar - Hide when taking quiz */}
+      {/* Header - Hide when taking quiz */}
       {activeTab !== 'quiz-session' && (
-        <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
-          <div className="flex justify-between items-center mb-10">
-            <h2 className="sidebar-title mb-0">Quizi</h2>
-            <button className="md:hidden text-gray-400" onClick={toggleSidebar}>
-              <X size={24} />
+        <div className="header z-50 w-full shrink-0 shadow-sm dark:shadow-slate-900/50">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <button className="header-action-btn p-2.5 rounded-xl sm:hidden transition-all duration-200" onClick={toggleSidebar}>
+              <Menu size={24} />
             </button>
+            <div className="hidden sm:block">
+              <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Welcome back, {studentData?.full_name || "Student"}</h1>
+              <p className="header-subtitle mt-1">Ready for your next quiz?</p>
+            </div>
           </div>
+          <div className="flex items-center gap-4">
+            <button className="header-enroll-btn hidden sm:flex px-4 py-2 rounded-xl transition-all duration-200 text-sm font-bold shadow-sm whitespace-nowrap" onClick={() => setActiveTab("browse")}>
+              <span className="inline-flex items-center gap-2">
+                <Plus size={16} />
+                <span className="leading-none">Enroll New Course</span>
+              </span>
+            </button>
+            
+            {/* Notification Bell */}
+            <div className="relative mr-2">
+              <button
+                className="header-action-btn p-3 rounded-xl relative transition-all duration-200"
+                onClick={() => setShowNotifications(!showNotifications)}
+              >
+                {notifications.some(n => !n.is_read) ? (
+                  <>
+                    <BellDot className="text-indigo-500" size={20} />
+                    <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-900 animate-pulse"></span>
+                  </>
+                ) : <Bell size={20} />}
+              </button>
 
-          <nav className="sidebar-nav">
-            <SidebarItem
-              icon={<Home size={18} />}
-              label="Dashboard"
-              active={activeTab === "dashboard"}
-              onClick={() => { setActiveTab("dashboard"); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<Layers size={18} />}
-              label="My Courses"
-              active={activeTab === "my-courses"}
-              onClick={() => { setActiveTab("my-courses"); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<Search size={18} />}
-              label="Browse Courses"
-              active={activeTab === "browse"}
-              onClick={() => { setActiveTab("browse"); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<BookOpen size={18} />}
-              label="Quizzes"
-              active={activeTab === "quizzes"}
-              onClick={() => { setActiveTab("quizzes"); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<BarChart3 size={18} />}
-              label="Reports"
-              active={activeTab === "reports"}
-              onClick={() => { setActiveTab("reports"); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<History size={18} />}
-              label="Attempt History"
-              active={activeTab === "attempt-history"}
-              onClick={() => { setActiveTab("attempt-history"); setIsSidebarOpen(false); }}
-            />
-          </nav>
-
-
-          <div className="sidebar-footer">
-            <SidebarItem
-              icon={theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              label={theme === 'light' ? "Dark Mode" : "Light Mode"}
-              onClick={toggleTheme}
-            />
-            <SidebarItem
-              icon={<User size={18} />}
-              label="Profile"
-              active={activeTab === "profile"}
-              onClick={() => {
-                if (activeTab !== "profile") setPreviousTab(activeTab);
-                setActiveTab("profile");
-                setIsSidebarOpen(false);
-              }}
-            />
-            <SidebarItem
-              icon={<LogOut size={18} />}
-              label="Logout"
-              onClick={handleLogout}
-            />
+              {showNotifications && (
+                <div ref={notificationRef} className="absolute right-0 mt-3 w-80 dropdown-card rounded-2xl z-[300] overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                    <h3 className="font-bold text-slate-900 dark:text-white">Notifications</h3>
+                    <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all" onClick={() => setShowNotifications(false)}>
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length > 0 ? notifications.map(n => (
+                      <div key={n.id} className="relative group overflow-hidden border-b border-borderColor last:border-0 bg-cardBg">
+                        {/* Swipeable Container */}
+                        <div className="flex transition-transform duration-300 ease-out hover:-translate-x-16">
+                          <div
+                            className={`flex-1 p-4 cursor-pointer ${!n.is_read ? 'bg-indigo-500/5' : ''}`}
+                            onClick={() => handleMarkAsRead(n.id)}
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded ${n.type === 'quiz' ? 'bg-red-500/20 text-red-400' : 'bg-indigo-500/20 text-indigo-400'}`}>
+                                {n.type}
+                              </span>
+                              <span className="text-[10px] text-slate-500">{new Date(n.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">{n.title}</h4>
+                            <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
+                          </div>
+                          {/* Delete Button (reveal on hover/swipe) */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteNotification(n.id);
+                            }}
+                            className="w-16 bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="p-8 text-center text-slate-500 text-sm">No new notifications</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </aside>
+        </div>
       )}
 
-      {/* Main Content */}
-      <main className="main">
-        {/* Header - Hide when taking quiz */}
-        {activeTab !== 'quiz-session' && (
-          <div className="header">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <button className="mobile-toggle" onClick={toggleSidebar}>
-                <Menu size={24} />
-              </button>
-              <div className="hidden lg:block">
-                <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Welcome back, {studentData?.full_name || "Student"}</h1>
-                <p className="header-subtitle mt-1">Ready for your next quiz?</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="header-enroll-btn btn-primary px-4 py-2 rounded-xl" onClick={() => setActiveTab("browse")}>Enroll New Course</button>
-              {/* Notification Bell */}
-              <div className="relative mr-2">
-                <button
-                  className="p-3 btn-secondary rounded-xl relative"
-                  onClick={() => setShowNotifications(!showNotifications)}
-                >
-                  <Bell size={20} className={notifications.some(n => !n.is_read) ? "text-indigo-500" : "text-white"} />
-                  {notifications.some(n => !n.is_read) && (
-                    <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></span>
-                  )}
-                </button>
+      {/* Mobile FAB for Enroll */}
+      {activeTab !== 'quiz-session' && (
+        <button 
+          className="mobile-fab sm:hidden" 
+          onClick={() => setActiveTab("browse")}
+          title="Enroll New Course"
+        >
+          <CirclePlus size={32} />
+        </button>
+      )}
 
-                {showNotifications && (
-                  <div ref={notificationRef} className="absolute right-0 mt-3 w-80 dropdown-card rounded-2xl z-[300] overflow-hidden">
-                    <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                      <h3 className="font-bold text-slate-900 dark:text-white">Notifications</h3>
-                      <button className="text-xs text-indigo-500 hover:underline" onClick={() => setShowNotifications(false)}>Close</button>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      {notifications.length > 0 ? notifications.map(n => (
-                        <div key={n.id} className="relative group overflow-hidden border-b border-borderColor last:border-0 bg-cardBg">
-                          {/* Swipeable Container */}
-                          <div className="flex transition-transform duration-300 ease-out hover:-translate-x-16">
-                            <div
-                              className={`flex-1 p-4 cursor-pointer ${!n.is_read ? 'bg-indigo-500/5' : ''}`}
-                              onClick={() => handleMarkAsRead(n.id)}
-                            >
-                              <div className="flex justify-between items-start mb-1">
-                                <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded ${n.type === 'quiz' ? 'bg-red-500/20 text-red-400' : 'bg-indigo-500/20 text-indigo-400'}`}>
-                                  {n.type}
-                                </span>
-                                <span className="text-[10px] text-slate-500">{new Date(n.created_at).toLocaleDateString()}</span>
-                              </div>
-                              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">{n.title}</h4>
-                              <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
-                            </div>
-                            {/* Delete Button (reveal on hover/swipe) */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteNotification(n.id);
-                              }}
-                              className="w-16 bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
-                            >
-                              <X size={18} />
-                            </button>
-                          </div>
-                        </div>
-                      )) : (
-                        <div className="p-8 text-center text-slate-500 text-sm">No new notifications</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+      <div className="dashboard-body flex flex-1 overflow-hidden relative">
+        {/* Sidebar - Hide when taking quiz */}
+        {activeTab !== 'quiz-session' && (
+          <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
+            <div className="flex justify-between items-center mb-10">
+              <h2 className="sidebar-title mb-0">Quizi</h2>
+              <button className="md:hidden text-gray-400" onClick={toggleSidebar}>
+                <X size={24} />
+              </button>
             </div>
-          </div>
+
+            <nav className="sidebar-nav">
+              <SidebarItem
+                icon={<Home size={18} />}
+                label="Dashboard"
+                active={activeTab === "dashboard"}
+                onClick={() => { setActiveTab("dashboard"); setIsSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<Layers size={18} />}
+                label="My Courses"
+                active={activeTab === "my-courses"}
+                onClick={() => { setActiveTab("my-courses"); setIsSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<Search size={18} />}
+                label="Browse Courses"
+                active={activeTab === "browse"}
+                onClick={() => { setActiveTab("browse"); setIsSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<BookOpen size={18} />}
+                label="Quizzes"
+                active={activeTab === "quizzes"}
+                onClick={() => { setActiveTab("quizzes"); setIsSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<BarChart3 size={18} />}
+                label="Reports"
+                active={activeTab === "reports"}
+                onClick={() => { setActiveTab("reports"); setIsSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<History size={18} />}
+                label="Attempt History"
+                active={activeTab === "attempt-history"}
+                onClick={() => { setActiveTab("attempt-history"); setIsSidebarOpen(false); }}
+              />
+            </nav>
+
+
+            <div className="sidebar-footer">
+              <SidebarItem
+                icon={theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                label={theme === 'light' ? "Dark Mode" : "Light Mode"}
+                onClick={toggleTheme}
+              />
+              <SidebarItem
+                icon={<User size={18} />}
+                label="Profile"
+                active={activeTab === "profile"}
+                onClick={() => {
+                  if (activeTab !== "profile") setPreviousTab(activeTab);
+                  setActiveTab("profile");
+                  setIsSidebarOpen(false);
+                }}
+              />
+              <SidebarItem
+                icon={<LogOut size={18} />}
+                label="Logout"
+                onClick={handleLogout}
+              />
+            </div>
+          </aside>
         )}
+
+        {/* Main Content */}
+        <main className="main flex-1 overflow-y-auto">
 
         <div className={`content-area ${activeTab === 'quiz-session' ? 'p-8' : ''}`}>
           {activeTab !== 'dashboard' && activeTab !== 'quiz-session' && (
@@ -691,7 +819,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
             // Quiz Scores (Last 5 attempts)
             const recentResults = results.slice(-5);
             const scoreData = recentResults.map(r => Math.round((r.score / Math.max(r.total_marks, 1)) * 100));
-            const scoreLabels = recentResults.map((r, i) => r.quiz?.title?.substring(0, 8) + "..." || `Q${i + 1}`);
+            const scoreLabels = recentResults.map((r, i) => r.quizzes?.title ? (r.quizzes.title.length > 12 ? r.quizzes.title.substring(0, 12) + "..." : r.quizzes.title) : `Q${i + 1}`);
 
             return (
               <>
@@ -730,22 +858,32 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                 {/* Charts */}
                 <div className="charts">
                   <div className="chart-card">
-                    <div className="flex justify-between items-center mb-6">
-                      <div>
-                        <h2 className="chart-title mb-0 text-slate-900 dark:text-white">Weekly Productivity</h2>
-                        <p className="text-xs text-slate-600 dark:text-slate-500">Quiz attempts by day of week</p>
+                    <h3 className="chart-title flex items-center gap-2">
+                      <BarChart3 size={20} className="text-indigo-500" />
+                      Weekly Productivity
+                    </h3>
+                    {productivityData.every(d => d === 0) ? (
+                      <div className="chart-placeholder bar">
+                        <BarChart3 size={32} className="mb-2 opacity-50 text-indigo-400" />
+                        <p>No activity this week.</p>
                       </div>
-                    </div>
-                    <BarChart data={productivityData} labels={dayLabels} color="#6366f1" />
+                    ) : (
+                      <BarChart data={productivityData} labels={dayLabels} color="#6366f1" />
+                    )}
                   </div>
                   <div className="chart-card">
-                    <div className="flex justify-between items-center mb-6">
-                      <div>
-                        <h2 className="chart-title mb-0 text-slate-900 dark:text-white">Quiz Scores</h2>
-                        <p className="text-xs text-slate-600 dark:text-slate-500">Performance (Percentage) of last 5 attempts</p>
+                    <h3 className="chart-title flex items-center gap-2 mb-6">
+                      <TrendingUp size={20} className="text-indigo-500" />
+                      Quiz Scores
+                    </h3>
+                    {scoreData.length === 0 ? (
+                      <div className="chart-placeholder line">
+                        <TrendingUp size={32} className="mb-2 opacity-50 text-indigo-400" />
+                        <p>No score history available.</p>
                       </div>
-                    </div>
-                    <MiniLineChart data={scoreData} labels={scoreLabels} />
+                    ) : (
+                      <MiniLineChart data={scoreData} labels={scoreLabels} />
+                    )}
                   </div>
                 </div>
               </>
@@ -772,20 +910,20 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                   <button onClick={() => window.location.reload()} className="mt-8 btn-primary px-8 py-3 rounded-2xl">Retry Connection</button>
                 </div>
               ) : courses.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {courses.map(course => {
                     const isEnrolled = myCourses.some(mc => mc.id === course.id);
                     return (
-                      <div key={course.id} className="chart-card flex flex-col justify-between group hover:border-indigo-500/50 transition-all p-8 rounded-3xl shadow-sm">
+                      <div key={course.id} className="chart-card flex flex-col justify-between group hover:border-indigo-500/50 transition-all p-4 sm:p-6 md:p-8 rounded-3xl shadow-sm">
                         <div>
                           <div className="flex justify-between items-start mb-4">
-                            <div className="w-12 h-12 bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center font-black transition-transform group-hover:scale-110">
+                            <div className="hidden sm:flex w-12 h-12 bg-indigo-500/10 text-indigo-500 rounded-2xl items-center justify-center font-black transition-transform group-hover:scale-110">
                               {course.course_code.substring(0, 2).toUpperCase()}
                             </div>
                             <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-gray-400 px-2 py-1 rounded uppercase font-bold tracking-widest border border-slate-200 dark:border-slate-700">{course.course_code}</span>
                           </div>
-                          <h3 className="text-xl font-bold mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-slate-900 dark:text-white">{course.title}</h3>
-                          <p className="text-slate-500 dark:text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed">{course.description}</p>
+                          <h3 className="text-base md:text-xl font-bold mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors text-slate-900 dark:text-white">{course.title}</h3>
+                          <p className="hidden md:block text-slate-500 dark:text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed">{course.description}</p>
                         </div>
                         {isEnrolled ? (
                           <button className="w-full bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-500 py-3 rounded-2xl font-bold cursor-default flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-800">
@@ -823,7 +961,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
           )}
 
           {activeTab === "my-courses" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {myCourses.map(course => {
                 const courseResults = results.filter(r => r.quiz?.course_id === course.id);
                 const uniqueAttemptedQuizIds = new Set(courseResults.map(r => r.quiz_id));
@@ -834,70 +972,124 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                 return (
                   <div
                     key={course.id}
-                    className="chart-card cursor-pointer hover:border-indigo-500/50 transition-all active:scale-[0.98]"
+                    className="chart-card relative cursor-pointer hover:border-indigo-500/50 transition-all active:scale-[0.98] p-4 sm:p-6 md:p-8"
                     onClick={() => {
                       setSelectedCourseFilter(course.id.toString());
                       setActiveTab("quizzes");
                     }}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-xl font-bold">{course.title}</h3>
-                      <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded-md font-mono">{course.course_code}</span>
+                      <h3 className="text-base md:text-xl font-bold line-clamp-1 pr-8 md:pr-0">{course.title}</h3>
+                      {/* Mobile Leave Button */}
+                      <div className="md:hidden absolute top-3 right-3">
+                        {leavingCourseId === course.id ? (
+                          <div className="flex items-center gap-2">
+                            {leaveCountdown > 0 ? (
+                              <button
+                                disabled
+                                className="px-3 py-1.5 bg-red-500/10 text-red-500 rounded-lg font-bold text-[10px] flex items-center gap-1 animate-pulse"
+                              >
+                                {leaveCountdown}s
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRequestLeave(course.id);
+                                  setLeavingCourseId(null);
+                                }}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded-lg font-bold text-[10px] hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 active:scale-95"
+                              >
+                                Confirm
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeavingCourseId(null);
+                                setLeaveCountdown(0);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLeavingCourseId(course.id);
+                              setLeaveCountdown(5);
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider group/leave"
+                            title="Leave Course Request"
+                          >
+                            <LogOut size={14} className="group-hover/leave:-translate-x-0.5 transition-transform" />
+                          </button>
+                        )}
+                      </div>
+                      {/* Desktop Course Code Tag */}
+                      <span className="hidden md:inline-block text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded-md font-mono">{course.course_code}</span>
                     </div>
-                    <p className="text-gray-400 text-sm mb-4 line-clamp-2">{course.description}</p>
+                    <p className="hidden md:block text-gray-400 text-sm mb-4 line-clamp-2">{course.description}</p>
                     <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                       <div className="bg-indigo-50 h-full transition-all duration-1000" style={{ width: `${percent}%`, backgroundColor: percent === 100 ? '#10b981' : '#6366f1' }}></div>
                     </div>
                     <div className="flex justify-between items-center mt-3">
-                      <p className={`text-xs font-medium ${percent === 100 ? 'text-green-500' : 'text-indigo-400'}`}>
+                      <p className={`text-[10px] md:text-xs font-medium ${percent === 100 ? 'text-green-500' : 'text-indigo-400'}`}>
                         {percent}% Complete
                       </p>
-                      {leavingCourseId === course.id ? (
-                        <div className="flex items-center gap-2">
-                          {leaveCountdown > 0 ? (
-                            <button
-                              disabled
-                              className="px-4 py-2 bg-red-500/10 text-red-500 rounded-xl font-bold text-xs flex items-center gap-2 animate-pulse"
-                            >
-                              Confirm in {leaveCountdown}s
-                            </button>
-                          ) : (
+                      
+                      {/* Desktop Leave Button Row */}
+                      <div className="hidden md:flex items-center gap-2">
+                        {leavingCourseId === course.id ? (
+                          <div className="flex items-center gap-2">
+                            {leaveCountdown > 0 ? (
+                              <button
+                                disabled
+                                className="px-4 py-2 bg-red-500/10 text-red-500 rounded-xl font-bold text-xs flex items-center gap-2 animate-pulse"
+                              >
+                                Confirm in {leaveCountdown}s
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRequestLeave(course.id);
+                                  setLeavingCourseId(null);
+                                }}
+                                className="px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 active:scale-95"
+                              >
+                                Confirm Leave
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRequestLeave(course.id);
                                 setLeavingCourseId(null);
+                                setLeaveCountdown(0);
                               }}
-                              className="px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 active:scale-95"
+                              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                              title="Cancel"
                             >
-                              Confirm Leave
+                              <X size={14} />
                             </button>
-                          )}
+                          </div>
+                        ) : (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setLeavingCourseId(null);
-                              setLeaveCountdown(0);
+                              setLeavingCourseId(course.id);
+                              setLeaveCountdown(5);
                             }}
-                            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
-                            title="Cancel"
+                            className="px-4 py-2 text-red-500 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider group/leave shadow-sm"
+                            title="Leave Course Request"
                           >
-                            <X size={14} />
+                            <LogOut size={12} className="group-hover/leave:-translate-x-0.5 transition-transform" /> Leave
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setLeavingCourseId(course.id);
-                            setLeaveCountdown(5);
-                          }}
-                          className="px-4 py-2 text-red-500 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-all flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider group/leave shadow-sm"
-                          title="Leave Course Request"
-                        >
-                          <LogOut size={12} className="group-hover/leave:-translate-x-0.5 transition-transform" /> Leave
-                        </button>
-                      )}
+                        )}
+                      </div>
+
                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                         {completedCount}/{totalQuizzes} Quizzes
                       </span>
@@ -949,7 +1141,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {myCourses
                   .filter(c => selectedCourseFilter === "all" || String(c.id) === String(selectedCourseFilter))
                   .map(course => (
@@ -969,48 +1161,66 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
           )}
 
           {activeTab === "reports" && (
-            <div className="flex flex-col gap-6">
-              <div className="chart-card p-8">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="p-3 bg-indigo-600/10 text-indigo-500 rounded-xl">
-                    <TrendingUp size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Performance History</h3>
-                    <p className="text-sm text-slate-500">Track your progress across all quizzes</p>
-                  </div>
+            <div className="flex flex-col gap-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Academic Reports</h2>
+                  <p className="text-slate-500 text-sm mt-1">Detailed breakdown of your quiz performance</p>
                 </div>
+              </div>
 
-                {results.length > 0 ? (
-                  <div className="flex flex-col gap-4">
-                    {results.slice().reverse().map((res, idx) => (
-                      <div key={res.id || idx} className="bg-slate-800/30 border border-slate-800 p-5 rounded-2xl flex justify-between items-center group hover:border-indigo-500/30 transition-all">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-indigo-400 font-bold border border-slate-800">
-                            {Math.round((res.score / res.total_marks) * 100)}%
-                          </div>
-                          <div>
-                            <h4 className="font-semibold text-slate-900 dark:text-white">{res.quiz?.title || `Quiz Attempt #${results.length - idx}`}</h4>
-                            <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{res.quiz?.course?.title}</p>
-                            <p className="text-xs text-gray-500 mt-1">{new Date(res.completed_at).toLocaleDateString()} • {res.score} / {res.total_marks} Marks</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${res.score / res.total_marks >= 0.4 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                            {res.score / res.total_marks >= 0.4 ? 'Passed' : 'Failed'}
-                          </div>
-                          <TrendingUp size={16} className="text-slate-700 group-hover:text-indigo-500 transition-colors" />
-                        </div>
-                      </div>
+              <div className="premium-table-container">
+                <table className="premium-table">
+                  <thead>
+                    <tr>
+                      <th>Quiz Name</th>
+                      <th>Course</th>
+                      <th>Score</th>
+                      <th>Percentage</th>
+                      <th>Violations</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map(res => (
+                      <tr key={res.id}>
+                        <td data-label="Quiz Name">
+                          <span className="font-bold text-slate-900 dark:text-white">{res.quizzes?.title || "Quiz"}</span>
+                        </td>
+                        <td data-label="Course">
+                          <span className="text-sm text-slate-500">{res.quizzes?.courses?.title || "N/A"}</span>
+                        </td>
+                        <td data-label="Score">
+                          <span className="font-mono font-bold text-indigo-500">{res.score}</span>
+                          <span className="text-xs text-slate-400"> / {res.total_marks}</span>
+                        </td>
+                        <td data-label="Percentage">
+                          <span className={`status-badge ${(res.score / res.total_marks) >= 0.4 ? 'status-badge-success' : 'status-badge-error'}`}>
+                            {((res.score / res.total_marks) * 100).toFixed(1)}%
+                          </span>
+                        </td>
+                        <td data-label="Violations">
+                          <span className={`status-badge ${res.eye_tracking_violations > 0 ? 'status-badge-error' : 'status-badge-success'}`}>
+                            {res.eye_tracking_violations} Alerts
+                          </span>
+                        </td>
+                        <td data-label="Date">
+                          <span className="text-xs text-slate-500">{new Date(res.completed_at).toLocaleDateString()}</span>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
-                ) : (
-                  <div className="py-20 text-center text-slate-400 bg-slate-50 dark:bg-slate-800/20 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-                    <Database size={48} className="mx-auto mb-4 opacity-20" />
-                    <p className="font-medium">No quiz results yet.</p>
-                    <p className="text-xs opacity-60">Complete a quiz to see your performance here.</p>
-                  </div>
-                )}
+                    {results.length === 0 && (
+                      <tr>
+                        <td colSpan="6" className="py-20 text-center text-slate-400">
+                          <div className="flex flex-col items-center gap-2">
+                            <BarChart3 size={40} className="opacity-20" />
+                            <p>No reports available yet.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -1055,8 +1265,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
               </button>
             </div>
           )}
-          {
-            activeTab === "profile" && (
+          {activeTab === "profile" && (
               <div className="max-w-2xl mx-auto w-full">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-3xl font-bold">Edit Profile</h2>
@@ -1261,15 +1470,13 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                   </div>
                 </div>
               </div>
-            )
-          }
-          {
-            activeTab === "attempt-history" && (
-              <AttemptHistory studentData={studentData} results={results} />
-            )
-          }
+            )}
+          {activeTab === "attempt-history" && (
+            <AttemptHistory studentData={studentData} results={results} />
+          )}
         </div>
-      </main >
+      </main>
+    </div>
 
       {/* Enrollment Key Modal */}
       {
@@ -1371,7 +1578,6 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
           </div>
         )
       }
-
       {/* Quiz Details Modal */}
       {showQuizDetailsModal && selectedQuizForDetails && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200] p-4">
@@ -1383,7 +1589,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                 </div>
                 <div>
                   <h2 className="text-3xl font-black text-white">{selectedQuizForDetails.title}</h2>
-                  <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mt-1">Quiz Details &amp; Requirements</p>
+                  <p className="text-indigo-400 font-bold uppercase tracking-widest text-xs mt-1">Quiz Details & Requirements</p>
                 </div>
               </div>
               <button
@@ -1396,7 +1602,7 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div className="bg-cardBg p-6 rounded-3xl border border-borderColor">
-                <p className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-500 mb-4 tracking-widest">Timing &amp; Scoring</p>
+                <p className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-500 mb-4 tracking-widest">Timing & Scoring</p>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2"><Clock size={14} /> Duration</span>
@@ -1459,14 +1665,14 @@ export default function StudentDashboard({ studentData = {}, onLogout, isFirstLo
                     setShowKeyModal(true);
                   }}
                 >
-                  Confirm &amp; Take Quiz
+                  Confirm & Take Quiz
                 </button>
               )}
             </div>
           </div>
         </div>
       )}
-    </div >
+    </div>
   );
 }
 
@@ -1834,7 +2040,35 @@ function QuizSession({ quiz, questions, onFinish }) {
   const canvasRef = useRef(null);
   const alertIntervalRef = useRef(null);
   const trackingIntervalRef = useRef(null);
-  const alertSound = useRef(new Audio('/alert.mp3'));
+  const consecutiveViolationsRef = useRef(0);
+  const oscillatorRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const isSubmittingRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Auto-submit on Logout
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        console.log("User signed out, auto-submitting quiz...");
+        handleFinish();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const getMonitoringThresholds = () => {
+    return {
+      yaw: 15,
+      pitch: 10
+    };
+  };
 
   // Sync Refs with State to avoid stale closures
   useEffect(() => {
@@ -1934,6 +2168,7 @@ function QuizSession({ quiz, questions, onFinish }) {
   }, [currentIndex, answers, violations, timeLeft]);
 
   const startTracking = () => {
+    const intervalDelay = isMobile ? 1800 : 1000;
     trackingIntervalRef.current = setInterval(async () => {
       if (videoRef.current && videoRef.current.readyState === 4) {
         // 1. Low Light Detection
@@ -1942,7 +2177,7 @@ function QuizSession({ quiz, questions, onFinish }) {
         // 2. Face/Eye Tracking
         detectFace();
       }
-    }, 1000);
+    }, intervalDelay);
   };
 
   const detectLowLight = () => {
@@ -1976,55 +2211,46 @@ function QuizSession({ quiz, questions, onFinish }) {
         return;
       }
 
+      setFaceDetectionStatus("Face Detected");
+
       const landmarks = detections.landmarks;
       const nose = landmarks.getNose();
       const leftEye = landmarks.getLeftEye();
       const rightEye = landmarks.getRightEye();
       const jaw = landmarks.getJawOutline();
 
-      // --- Precise Yaw Calculation ---
       // Midpoint between eyes
       const eyeMidX = (leftEye[0].x + rightEye[5].x) / 2;
       const noseTipX = nose[6].x;
       const faceWidth = Math.abs(jaw[16].x - jaw[0].x);
+      const yaw = ((noseTipX - eyeMidX) / faceWidth) * 150;
 
-      // Yaw calculation (estimation in degrees)
-      const yaw = ((noseTipX - eyeMidX) / faceWidth) * 150; // 150 is a scaling factor
-
-      // --- Precise Pitch Calculation ---
       const eyeMidY = (leftEye[0].y + rightEye[5].y) / 2;
       const noseTipY = nose[6].y;
       const faceHeight = Math.abs(jaw[8].y - eyeMidY);
-
-      // Pitch calculation (estimation in degrees)
-      // Normal state nose is below eye center. 
-      // If looking up, nose gets closer to eye center (relative to face height)
       const pitch = ((noseTipY - eyeMidY) / faceHeight - 0.5) * 100;
 
-      // Threshold Logic from USER Request:
-      // Center: ~0 Yaw, ~0 Pitch
-      // Left: +10 to +25 Yaw
-      // Right: -10 to -25 Yaw
-      // Top: -10 Pitch
-      // Bottom: +10 Pitch
-      // Not looking: > ±30 Yaw, > ±20 Pitch
+      // Simple Gaze Estimation: eye center relative to corners
+      // This is a proxy since we don't have iris tracking
+      const leftEyeCenter = leftEye.reduce((acc, p) => ({ x: acc.x + p.x / 6, y: acc.y + p.y / 6 }), { x: 0, y: 0 });
+      const rightEyeCenter = rightEye.reduce((acc, p) => ({ x: acc.x + p.x / 6, y: acc.y + p.y / 6 }), { x: 0, y: 0 });
+      const gaze = (yaw * 0.5) + (pitch * 0.2); // Simplified combined metric for "eye movement"
 
+      const thresholds = getMonitoringThresholds();
       let isViolation = false;
       let reason = "";
 
-      if (Math.abs(yaw) > 30) {
+      if (Math.abs(yaw) > thresholds.yaw) {
         isViolation = true;
         reason = "Looking Away (Yaw)";
-      } else if (Math.abs(pitch) > 20) {
+      } else if (Math.abs(pitch) > thresholds.pitch) {
         isViolation = true;
         reason = "Looking Away (Pitch)";
       }
 
       if (isViolation) {
-        setFaceDetectionStatus(reason);
         startAlert(reason);
       } else {
-        setFaceDetectionStatus("Monitoring Active");
         stopAlert();
       }
     } catch (err) {
@@ -2040,6 +2266,44 @@ function QuizSession({ quiz, questions, onFinish }) {
     setViolationTimeline(prev => [...prev, log]);
   };
 
+  const startBeep = () => {
+    if (oscillatorRef.current) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+      oscillator.start();
+      oscillatorRef.current = oscillator;
+      audioCtxRef.current = audioCtx;
+    } catch (e) {
+      console.error("Beep start failed", e);
+    }
+  };
+
+  const stopBeep = () => {
+    if (oscillatorRef.current) {
+      try {
+        oscillatorRef.current.stop();
+        oscillatorRef.current.disconnect();
+        if (audioCtxRef.current.state !== 'closed') {
+          audioCtxRef.current.close();
+        }
+      } catch (e) {
+        console.error("Beep stop failed", e);
+      }
+      oscillatorRef.current = null;
+      audioCtxRef.current = null;
+    }
+  };
+
   const startAlert = (reason = "General Detection") => {
     if (showAlertRef.current) return;
     setShowAlert(true);
@@ -2047,18 +2311,14 @@ function QuizSession({ quiz, questions, onFinish }) {
     setAlertTime(3);
     if (alertIntervalRef.current) clearInterval(alertIntervalRef.current);
 
-    // Play alert sound (first 3 seconds align with alert countdown)
-    alertSound.current.currentTime = 0;
-    alertSound.current.play().catch(e => console.error("Audio play failed", e));
+    startBeep();
 
     alertIntervalRef.current = setInterval(() => {
       setAlertTime(prev => {
         if (prev <= 1) {
           clearInterval(alertIntervalRef.current);
           alertIntervalRef.current = null;
-          // Stop alert sound immediately when countdown finishes
-          alertSound.current.pause();
-          alertSound.current.currentTime = 0;
+          stopBeep();
           incrementViolations(reason);
           return 0;
         }
@@ -2074,9 +2334,7 @@ function QuizSession({ quiz, questions, onFinish }) {
       clearInterval(alertIntervalRef.current);
       alertIntervalRef.current = null;
     }
-    // Stop alert sound
-    alertSound.current.pause();
-    alertSound.current.currentTime = 0;
+    stopBeep();
   };
 
   const incrementViolations = (reason) => {
@@ -2091,9 +2349,6 @@ function QuizSession({ quiz, questions, onFinish }) {
     }
     setShowAlert(false);
     showAlertRef.current = false;
-    // Stop alert sound
-    alertSound.current.pause();
-    alertSound.current.currentTime = 0;
   };
 
   const showAlertRef = useRef(false);
@@ -2120,6 +2375,19 @@ function QuizSession({ quiz, questions, onFinish }) {
   }, []);
 
   useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      // Attempt to submit before closing. 
+      // While async calls are not guaranteed to finish, this triggers the process.
+      handleFinish();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+  useEffect(() => {
     if (timeLeft <= 0) {
       handleFinish(violations);
       return;
@@ -2129,6 +2397,8 @@ function QuizSession({ quiz, questions, onFinish }) {
   }, [timeLeft]);
 
   const handleFinish = async (currentViolations = alertsRef.current, finalTimeline = timelineRef.current) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     let score = 0;
     const currentAnswers = answersRef.current;
 
@@ -2211,7 +2481,8 @@ function QuizSession({ quiz, questions, onFinish }) {
   });
 
   return (
-    <div className="flex flex-col gap-8 max-w-4xl mx-auto relative">
+    <div className={`flex flex-col gap-8 max-w-4xl mx-auto relative ${isMobile ? 'pt-16' : ''}`}>
+
       {/* Low Light Alert Overlay */}
       {isLowLight && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[400] bg-amber-600 text-white px-6 py-3 rounded-2xl flex items-center gap-3 shadow-2xl animate-bounce">
@@ -2221,18 +2492,25 @@ function QuizSession({ quiz, questions, onFinish }) {
       )}
 
       {/* Gaze Status Overlay */}
-      <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[400] bg-slate-900/80 backdrop-blur-md text-white px-4 py-2 rounded-full border border-slate-700 flex flex-col items-center gap-1">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${faceDetectionStatus === 'Monitoring Active' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
-          <span className="text-[10px] uppercase font-black tracking-widest">{faceDetectionStatus}</span>
+      {isMobile ? (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[400] bg-indigo-600/90 backdrop-blur-md text-white px-6 py-3 rounded-full border border-white/20 flex items-center gap-3 shadow-xl shadow-indigo-600/20">
+          <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
+          <span className="text-xs font-black uppercase tracking-widest">Monitoring Active</span>
         </div>
-        {(quiz.fullscreen_required || quiz.tab_switch_detection) && (
-          <div className="flex gap-2">
-            {quiz.fullscreen_required && <span className="text-[8px] opacity-60 font-bold uppercase tracking-tighter">Fullscreen Required</span>}
-            {quiz.tab_switch_detection && <span className="text-[8px] opacity-60 font-bold uppercase tracking-tighter">Tab Monitoring Active</span>}
+      ) : (
+        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[400] bg-slate-900/80 backdrop-blur-md text-white px-4 py-2 rounded-full border border-slate-700 flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${faceDetectionStatus === 'Face Detected' ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+            <span className="text-[10px] uppercase font-black tracking-widest">{faceDetectionStatus}</span>
           </div>
-        )}
-      </div>
+          {(quiz.fullscreen_required || quiz.tab_switch_detection) && (
+            <div className="flex gap-2">
+              {quiz.fullscreen_required && <span className="text-[8px] opacity-60 font-bold uppercase tracking-tighter">Fullscreen Required</span>}
+              {quiz.tab_switch_detection && <span className="text-[8px] opacity-60 font-bold uppercase tracking-tighter">Tab Monitoring Active</span>}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Eye Tracking Alert Overlay */}
       {showAlert && (
@@ -2243,10 +2521,10 @@ function QuizSession({ quiz, questions, onFinish }) {
               <ShieldAlert size={48} className="text-white" />
             </div>
             <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tighter">
-              Eye Tracking Alert!
+              Monitoring Alert!
             </h2>
             <p className="text-lg text-slate-500 dark:text-gray-400 mb-8 font-medium">
-              Your eyes were not detected on the screen. Please maintain focus to continue the quiz.
+              Sustained head or eye movement detected. Please maintain focus on the screen to continue the quiz.
             </p>
             <div className="flex flex-col gap-4">
               <div className="bg-red-500 text-white py-4 rounded-2xl text-2xl font-black flex items-center justify-center gap-3">
@@ -2264,17 +2542,27 @@ function QuizSession({ quiz, questions, onFinish }) {
       )}
 
       {/* Camera View Sub-Window */}
-      <div className="fixed bottom-8 right-8 w-60 h-44 bg-black rounded-3xl overflow-hidden border-2 border-indigo-500 shadow-2xl z-50">
-        <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-        <canvas ref={canvasRef} className="hidden" />
-        <div className="absolute top-3 left-3 flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${faceDetectionStatus === "Monitoring Active" ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
-          <span className="text-[10px] font-black text-white uppercase tracking-tighter drop-shadow-md">
-            {faceDetectionStatus}
-          </span>
+      {!isMobile && (
+        <div className="fixed bottom-8 right-8 w-60 h-44 bg-black rounded-3xl overflow-hidden border-2 border-indigo-500 shadow-2xl z-50">
+          <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <canvas ref={canvasRef} className="hidden" />
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${faceDetectionStatus === "Face Detected" ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
+            <span className="text-[10px] font-black text-white uppercase tracking-tighter drop-shadow-md">
+              {faceDetectionStatus}
+            </span>
+          </div>
+          {isLowLight && <div className="absolute inset-0 bg-amber-500/20 pointer-events-none" />}
         </div>
-        {isLowLight && <div className="absolute inset-0 bg-amber-500/20 pointer-events-none" />}
-      </div>
+      )}
+
+      {/* Hidden Mobile Elements (for detection background) */}
+      {isMobile && (
+        <div className="hidden">
+          <video ref={videoRef} autoPlay muted playsInline />
+          <canvas ref={canvasRef} />
+        </div>
+      )}
 
       <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
         <div>
@@ -2415,16 +2703,20 @@ function QuizSession({ quiz, questions, onFinish }) {
 function StatCard({ title, value, trend, icon, onClick }) {
   return (
     <div
-      className={`stat-card group ${onClick ? "cursor-pointer hover:border-indigo-500/50 transition-all active:scale-[0.98]" : ""} shadow-sm`}
+      className={`stat-card group ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
     >
       <div className="flex flex-col">
-        <p className="stat-title text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]">{title}</p>
-        <p className="stat-value text-slate-900 dark:text-white font-black">{value}</p>
-        <p className="stat-trend positive bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded text-[10px] font-bold w-fit mt-1">{trend}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <p className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{value}</p>
+        <div className="flex items-center gap-1.5 mt-2">
+          <span className="stat-trend positive bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+            {trend}
+          </span>
+        </div>
       </div>
-      <div className="stat-icon bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 p-3 rounded-2xl group-hover:scale-110 transition-transform">
-        {icon}
+      <div className="stat-icon bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 p-4 rounded-2xl group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
+        {React.cloneElement(icon, { size: 24 })}
       </div>
     </div>
   );
