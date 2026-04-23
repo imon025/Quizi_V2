@@ -677,9 +677,9 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
     access_key: "",
     attempts_count: 1,
     shuffle_questions: false,
-    eye_tracking_enabled: false,
-    fullscreen_required: false,
-    tab_switch_detection: false,
+    eye_tracking_enabled: true,
+    fullscreen_required: true,
+    tab_switch_detection: true,
     violation_limit: 5,
     status: "draft"
   });
@@ -732,9 +732,9 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
         access_key: "",
         attempts_count: 1,
         shuffle_questions: false,
-        eye_tracking_enabled: false,
-        fullscreen_required: false,
-        tab_switch_detection: false,
+        eye_tracking_enabled: true,
+        fullscreen_required: true,
+        tab_switch_detection: true,
         violation_limit: 5,
         status: "draft"
       });
@@ -1984,17 +1984,21 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
 
           )}
-
           {activeTab === "all-quizzes" && (
-            <div className="flex flex-col gap-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold">All Quizzes</h2>
-                <div className="flex gap-2">
-                  <div>
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">All Quizzes</h2>
+                  <p className="text-slate-500 text-sm mt-1">Manage and track quizzes across all your courses</p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                  <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm w-full sm:w-auto">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-2">Course:</span>
                     <select
                       value={quizCourseFilter}
                       onChange={(e) => setQuizCourseFilter(e.target.value)}
-                      className="bg-slate-800 border border-slate-700 pl-3 pr-3 py-2 rounded-xl text-sm outline-none mr-2"
+                      className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none pr-8 py-1 cursor-pointer"
                     >
                       <option value="all">All Courses</option>
                       {myCourses.map(c => (
@@ -2002,12 +2006,13 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       ))}
                     </select>
                   </div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                  
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <input
                       type="text"
                       placeholder="Search quizzes..."
-                      className="bg-slate-800 border border-slate-700 pl-10 pr-4 py-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 pl-11 pr-4 py-3 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm dark:shadow-none transition-all"
                       value={quizSearchQuery}
                       onChange={(e) => setQuizSearchQuery(e.target.value)}
                     />
@@ -2085,7 +2090,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
           {activeTab === "reports" && (
             <div className="flex flex-col gap-8">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                   <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Student Reports</h2>
                   <p className="text-slate-500 text-sm mt-1">Detailed breakdown of quiz performance and proctoring logs.</p>
@@ -2132,7 +2137,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       <th>Student</th>
                       <th>Course</th>
                       <th>Quiz</th>
-                      <th className="text-center">Score</th>
+                      <th className="text-right">Score</th>
                       <th>Percentage</th>
                       <th className="text-center">Violations</th>
                       <th>Date</th>
@@ -2156,9 +2161,11 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                           <td data-label="Quiz">
                             <span className="text-sm font-medium text-slate-700 dark:text-gray-300">{result.quiz?.title}</span>
                           </td>
-                          <td data-label="Score" className="text-center font-mono text-sm">
-                            <span className="text-slate-900 dark:text-white font-bold">{result.score}</span>
-                            <span className="text-slate-400"> / {result.total_marks}</span>
+                          <td data-label="Score" className="text-right font-mono text-sm">
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-slate-900 dark:text-white font-bold">{result.score}</span>
+                              <span className="text-slate-400"> / {result.total_marks}</span>
+                            </div>
                           </td>
                           <td data-label="Percentage">
                             <span className={`status-badge ${(result.score / Math.max(result.total_marks, 1)) >= 0.4 ? 'status-badge-success' : 'status-badge-error'}`}>
@@ -2638,9 +2645,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           {/* Create Course Modal */}
           {
             showCreateCourse && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-lg shadow-2xl my-8">
-                  <h2 className="text-2xl font-bold mb-6">Create New Course</h2>
+                  <button 
+                    onClick={() => setShowCreateCourse(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500"
+                  >
+                    <X size={20} />
+                  </button>
+                  <h2 className="text-2xl font-bold mb-6 text-slate-900 dark:text-white">Create New Course</h2>
                   <form onSubmit={handleCreateCourse} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
                       <label className="text-sm text-gray-400 mb-1 block">Course Title</label>
@@ -2737,7 +2750,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                     </div>
                     <div className="md:col-span-2 flex gap-4 mt-6">
                       <button type="button" className="flex-1 btn-secondary p-3 rounded-xl font-semibold" onClick={() => setShowCreateCourse(false)}>Cancel</button>
-                      <button type="submit" className="flex-1 btn-primary p-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/20">Create Course</button>
+                      <button type="submit" className="flex-1 btn-primary bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-semibold shadow-lg shadow-indigo-500/20">Create Course</button>
                     </div>
                   </form>
                 </div>
@@ -2747,7 +2760,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           {/* Manual Question Modal */}
           {
             showAddQuestion && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-6xl shadow-2xl my-8 relative flex flex-col lg:flex-row gap-12">
                   <button className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" onClick={() => setShowAddQuestion(false)}><X size={24} /></button>
 
@@ -2954,9 +2967,18 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           {
             showGradingModal && selectedAttempt && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
-                <div className="bg-slate-100 dark:bg-slate-900 w-full max-w-5xl max-h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-300">
+                <div className="bg-slate-100 dark:bg-slate-900 w-full max-w-5xl max-h-[100vh] sm:max-h-[90vh] rounded-none sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-300 relative">
+                  <button 
+                    className="absolute top-6 right-6 p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/20 transition-all z-10"
+                    onClick={() => {
+                      setShowGradingModal(false);
+                      setSelectedAttempt(null);
+                    }}
+                  >
+                    <X size={24} />
+                  </button>
                   {/* Header */}
-                  <div className="px-10 py-8 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-800/50">
+                  <div className="px-6 sm:px-10 py-6 sm:py-8 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-800/50 pr-16 sm:pr-20">
                     <div className="flex items-center gap-5">
                       <div className="w-16 h-16 bg-indigo-500 text-white rounded-3xl flex items-center justify-center font-black text-2xl shadow-lg shadow-indigo-500/20">
                         {selectedAttempt.student?.full_name?.charAt(0) || "S"}
@@ -3005,7 +3027,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       <div className="flex items-center gap-3 text-indigo-400 font-bold mb-4 uppercase tracking-widest text-xs">
                         <Shield size={16} /> Proctoring & Session Info
                       </div>
-                      <div className="grid grid-cols-2 gap-8 text-center">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 text-center">
                         <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                           <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Violations</span>
                           <div className={`text-2xl font-black ${selectedAttempt.eye_tracking_violations > 3 ? 'text-red-500' : 'text-slate-700 dark:text-slate-200'}`}>
@@ -3014,7 +3036,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                         </div>
                         <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl">
                           <span className="text-slate-500 text-xs font-bold uppercase block mb-1">Completed</span>
-                          <div className="text-lg font-bold text-slate-700 dark:text-slate-200">
+                          <div className="text-sm sm:text-lg font-bold text-slate-700 dark:text-slate-200">
                             {new Date(selectedAttempt.completed_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                           </div>
                         </div>
@@ -3053,7 +3075,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
                       return (
                         <div>
-                          <div className="flex gap-3 mb-6">
+                          <div className="flex flex-wrap gap-2 sm:gap-3 mb-6">
                             {[
                               { id: "all", label: `All (${counts.all})` },
                               { id: "mcq", label: `MCQ (${counts.mcq})` },
@@ -3087,10 +3109,10 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                               const isNotAnswered = !answer;
 
                               return (
-                                <div key={qId} className="bg-white dark:bg-slate-800/40 rounded-[2rem] p-8 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-all group">
+                                <div key={qId} className="bg-white dark:bg-slate-800/40 rounded-2xl sm:rounded-[2rem] p-4 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-500/30 transition-all group">
 
                                   {/* Question Header */}
-                                  <div className="flex justify-between items-start mb-6 gap-6">
+                                  <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4 sm:gap-6">
                                     <div className="flex items-start gap-4 flex-1">
                                       <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black group-hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/10 shrink-0">{idx + 1}</span>
                                       <div className="flex-1 min-w-0">
@@ -3114,11 +3136,11 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                                     </div>
 
                                     {/* Marks Input */}
-                                    <div className="flex flex-col items-end shrink-0">
+                                    <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto shrink-0 border-t sm:border-t-0 pt-4 sm:pt-0 mt-2 sm:mt-0 border-slate-100 dark:border-slate-800">
                                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Marks (Max: {pointInfo})</span>
                                       <input
                                         type="number"
-                                        className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-center font-black text-indigo-500 focus:ring-2 focus:ring-indigo-500 outline-none text-xl transition-all"
+                                        className="w-20 sm:w-24 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-center font-black text-indigo-500 focus:ring-2 focus:ring-indigo-500 outline-none text-lg sm:text-xl transition-all"
                                         value={feedback.score !== undefined && feedback.score !== "" ? feedback.score : (isCorrect ? pointInfo : 0)}
                                         max={pointInfo}
                                         min={0}
@@ -3244,9 +3266,9 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                   </div>
 
                   {/* Footer */}
-                  <div className="px-10 py-8 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-6 bg-white dark:bg-slate-800/50">
+                  <div className="px-6 sm:px-10 py-6 sm:py-8 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-end gap-3 sm:gap-6 bg-white dark:bg-slate-800/50">
                     <button
-                      className="px-8 py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                      className="w-full sm:w-auto px-8 py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
                       onClick={() => {
                         setShowGradingModal(false);
                         setSelectedAttempt(null);
@@ -3255,7 +3277,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       Discard Changes
                     </button>
                     <button
-                      className="btn-primary px-12 py-3 rounded-2xl font-black shadow-2xl shadow-indigo-500/20 flex items-center gap-3 transform hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest"
+                      className="btn-primary w-full sm:w-auto px-12 py-4 sm:py-3 rounded-2xl font-black shadow-2xl shadow-indigo-500/20 flex items-center justify-center gap-3 transform hover:scale-105 active:scale-95 transition-all text-sm uppercase tracking-widest"
                       disabled={isGrading}
                       onClick={async () => {
                         try {
@@ -3316,7 +3338,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
           {
             showEditQuestion && editingQuestion && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-6xl shadow-2xl my-8 relative flex flex-col lg:flex-row gap-12">
                   <button className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 dark:hover:text-white transition" onClick={() => setShowEditQuestion(false)}><X size={24} /></button>
 
@@ -3435,9 +3457,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
 
           {
             showEditCourse && selectedCourse && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4">
-                <div className="modal-content p-8 rounded-2xl w-full max-w-lg shadow-2xl">
-                  <h2 className="text-2xl font-bold mb-6">Edit Course</h2>
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
+                <div className="modal-content p-8 rounded-2xl w-full max-w-lg shadow-2xl my-8">
+                  <button 
+                    onClick={() => setShowEditCourse(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500"
+                  >
+                    <X size={20} />
+                  </button>
+                  <h2 className="text-2xl font-bold mb-6 text-slate-900 dark:text-white">Edit Course</h2>
                   <form onSubmit={handleUpdateCourse} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
                       <label className="text-sm font-bold text-slate-500 dark:text-gray-400">Course Title</label>
@@ -3540,7 +3568,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                     </div>
                     <div className="md:col-span-2 flex gap-4 mt-4">
                       <button type="button" className="flex-1 btn-secondary p-3 rounded-xl font-semibold" onClick={() => setShowEditCourse(false)}>Cancel</button>
-                      <button type="submit" className="flex-1 btn-primary p-3 rounded-xl font-semibold">Update Course</button>
+                      <button type="submit" className="flex-1 btn-primary bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-semibold">Update Course</button>
                     </div>
                   </form>
                 </div>
@@ -3549,9 +3577,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           }
           {
             showEditQuiz && editingQuiz && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-2xl shadow-2xl my-8">
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                  <button 
+                    onClick={() => setShowEditQuiz(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500"
+                  >
+                    <X size={20} />
+                  </button>
+                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-slate-900 dark:text-white">
                     <Pencil className="text-indigo-500" />
                     Edit Quiz: {editingQuiz.title}
                   </h2>
@@ -3686,7 +3720,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 btn-primary py-3 rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
+                        className="flex-1 btn-primary bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
                       >
                         SAVE CHANGES
                       </button>
@@ -3699,9 +3733,15 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
           {/* Create Quiz Modal */}
           {
             showCreateQuiz && (
-              <div className="fixed inset-0 modal-overlay flex items-center justify-center z-[200] p-4 overflow-y-auto">
+              <div className="fixed inset-0 modal-overlay flex items-start md:items-center justify-center z-[200] p-4 overflow-y-auto pt-20 md:pt-4">
                 <div className="modal-content p-8 rounded-2xl w-full max-w-2xl shadow-2xl my-8">
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                  <button 
+                    onClick={() => setShowCreateQuiz(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500"
+                  >
+                    <X size={20} />
+                  </button>
+                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-slate-900 dark:text-white">
                     <CirclePlus className="text-indigo-500" />
                     Configure New Quiz
                   </h2>
@@ -3791,7 +3831,7 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       />
                     </div>
 
-                    <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                    <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-100 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                       <div className="flex flex-col gap-2">
                         <label className="text-xs text-gray-500 font-bold">Eye Tracking</label>
                         <label className="relative inline-flex items-center cursor-pointer">
@@ -3838,9 +3878,9 @@ export default function TeacherDashboard({ teacherData, onLogout, isFirstLogin }
                       </button>
                       <button
                         type="submit"
-                        className="flex-3 btn-primary py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
+                        className="flex-1 btn-primary bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-indigo-600/20"
                       >
-                        CREATE QUIZ
+                        Create Quiz
                       </button>
                     </div>
                   </form>

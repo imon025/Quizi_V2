@@ -381,6 +381,7 @@
 .content-area {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
 }
 
@@ -641,6 +642,7 @@
 .modal-content {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
+  position: relative;
 }
 
 /* PREMIUM TABLE & LIST REFINEMENTS */
